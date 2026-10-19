@@ -6,11 +6,11 @@ import { jellyModel as detailedJelly } from './jelly.js';
 
 const TAU = Math.PI * 2;
 export const WORLD_INFO = [
-  { id:'saturn', name:'星际引力', en:'CELESTIAL ORBIT', label:'星环', title:'把宇宙，\n握在掌间。', description:'张开手掌，让一颗星球化作漫游的星系。', color:'#ddc298', bg:'#060a13', number:'01' },
-  { id:'heart', name:'心动星团', en:'A LITTLE INFINITY', label:'爱心', title:'让心动，\n有迹可循。', description:'握紧是一颗心，松开是漫天的小小心动。', color:'#f0a5c0', bg:'#100914', number:'02' },
-  { id:'tree', name:'记忆之树', en:'THE MEMORY TREE', label:'圣诞树', title:'每个瞬间，\n都在发光。', description:'星光、照片与金色雪花，聚成你的记忆。', color:'#d5c38a', bg:'#050e0d', number:'03' },
-  { id:'flower', name:'光之花园', en:'THE ART OF BLOOM', label:'花朵', title:'指尖松开，\n万物盛放。', description:'一朵柔光花，随手舒展，也能化作漫天花瓣。', color:'#e4add3', bg:'#100b18', number:'04' },
-  { id:'ocean', name:'微光深海', en:'BENEATH THE SILENCE', label:'水母', title:'潜入一片，\n发光的宁静。', description:'让水母与微光，跟随你的手缓缓游动。', color:'#a0e5df', bg:'#040e18', number:'05' },
+  { id:'saturn', name:'星际引力', en:'CELESTIAL ORBIT', label:'星环', title:'把宇宙，\n握在掌间。', description:'张开手掌，让一颗星球化作漫游的星系。', color:'#edcc9f', bg:'#080b17', number:'01' },
+  { id:'heart', name:'心动星团', en:'A LITTLE INFINITY', label:'爱心', title:'让心动，\n有迹可循。', description:'握紧是一颗心，松开是漫天的小小心动。', color:'#f4b0d3', bg:'#140c21', number:'02' },
+  { id:'tree', name:'记忆之树', en:'THE MEMORY TREE', label:'圣诞树', title:'每个瞬间，\n都在发光。', description:'星光、照片与金色雪花，聚成你的记忆。', color:'#dfca91', bg:'#071813', number:'03' },
+  { id:'flower', name:'光之花园', en:'THE ART OF BLOOM', label:'花朵', title:'指尖松开，\n万物盛放。', description:'一朵柔光花，随手舒展，也能化作漫天花瓣。', color:'#e9b8e0', bg:'#160e24', number:'04' },
+  { id:'ocean', name:'微光深海', en:'BENEATH THE SILENCE', label:'水母', title:'潜入一片，\n发光的宁静。', description:'让水母与微光，跟随你的手缓缓游动。', color:'#99e6e2', bg:'#061422', number:'05' },
 ];
 
 export function randomFactory(seed=18) { return () => { seed=(seed*1664525+1013904223)>>>0; return seed/4294967296; }; }
@@ -77,13 +77,13 @@ function createSaturn(info, texture) {
   const image=ctx.createImageData(1024,512);
   for(let y=0;y<512;y++)for(let x=0;x<1024;x++){const longitude=x/1024*TAU,latitude=y+Math.sin(longitude*4+y*.025)*2.4+Math.sin(longitude*13+y*.06)*.7,stripe=.5+.22*Math.sin(latitude*.15)+.1*Math.sin(latitude*.63)+.08*Math.sin(latitude*.049),n=(rng()-.5)*5,i=(y*1024+x)*4;image.data.set([146+stripe*68+n,120+stripe*55+n,91+stripe*40+n,255],i);}ctx.putImageData(image,0,0);
   const map=new THREE.CanvasTexture(canvas);map.colorSpace=THREE.SRGBColorSpace;
-  const sphere=new THREE.Mesh(new THREE.SphereGeometry(2.13,96,64),new THREE.MeshStandardMaterial({map,roughness:.96,metalness:.015,envMapIntensity:.055}));planet.add(sphere);remember(world,sphere);
+  const sphere=new THREE.Mesh(new THREE.SphereGeometry(2.13,96,64),new THREE.MeshStandardMaterial({map,roughness:.8,metalness:.06,envMapIntensity:.18}));planet.add(sphere);remember(world,sphere);
   const halo=atmosphere(2.2,'#d9b881',.55);planet.add(halo);remember(world,halo);
   const ring=new THREE.Mesh(new THREE.RingGeometry(2.78,5.35,256,10),new THREE.ShaderMaterial({
     side:THREE.DoubleSide,transparent:true,depthWrite:false,
     uniforms:{uOpacity:{value:1}},
     vertexShader:`varying vec3 vPos;void main(){vPos=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
-    fragmentShader:`uniform float uOpacity;varying vec3 vPos;void main(){float r=length(vPos.xy);float t=(r-2.78)/2.57;float bands=.5+.13*sin(r*78.)+.07*sin(r*181.);float gap=1.-smoothstep(.012,.045,abs(r-4.15));float edge=smoothstep(0.,.04,t)*(1.-smoothstep(.91,1.,t));vec3 c=mix(vec3(.22,.17,.12),vec3(.66,.55,.39),bands);float shade=mix(.25,1.,smoothstep(-3.,2.,vPos.x+vPos.y*.7));gl_FragColor=vec4(c*shade,(bands*.65+.18)*edge*(1.-gap*.8)*uOpacity);}`,
+    fragmentShader:`uniform float uOpacity;varying vec3 vPos;void main(){float r=length(vPos.xy);float t=(r-2.78)/2.57;float bands=.5+.13*sin(r*78.)+.07*sin(r*181.);float gap=1.-smoothstep(.012,.045,abs(r-4.15));float edge=smoothstep(0.,.04,t)*(1.-smoothstep(.91,1.,t));vec3 c=mix(vec3(.32,.24,.19),vec3(.88,.74,.58),bands);float shade=mix(.4,1.12,smoothstep(-3.,2.,vPos.x+vPos.y*.7));gl_FragColor=vec4(c*shade,(bands*.65+.18)*edge*(1.-gap*.8)*uOpacity);}`,
   }));ring.rotation.x=-Math.PI/2;planet.add(ring);remember(world,ring);world.ring=ring;
   const field=addField(world,new ParticleField(13000,(r)=>{const a=r()*TAU,rad=2.83+r()*2.6;return [Math.cos(a)*rad,(r()-.5)*.025,Math.sin(a)*rad];},['#bda47c','#bcb4a0','#8a7961'],{size:.016,brightness:.45}),planet);
   field.object.rotation.x=0;
@@ -121,9 +121,9 @@ function createHeart(info,texture) {
   const geometry=roundedHeartGeometry();
   const sculpture=crystalHeart(geometry),heart=sculpture.root;heart.rotation.y=-.18;world.body.add(heart);
   const heartVolume=r=>{const p=heartSurface(Math.acos(r()*2-1),r()*TAU),k=Math.pow(r(),1/3);return p.map((v,i)=>i===1?(v+.35)*k-.35:v*k);};
-  const hearts=createSwarm({geometry:roundedHeartGeometry(32,12),material:new THREE.MeshPhysicalMaterial({color:'#ffffff',metalness:.28,roughness:.28,clearcoat:.5,envMapIntensity:.7}),count:320,random:randomFactory(735),target:heartVolume,palette:['#c96c8b','#9f3d60','#e1a5ac','#b58272'],size:.064,spin:.13,destination:(r,i,n)=>orbitalPosition(r,i,n,{radius:6.5,bands:3,height:4.2,depth:2.6})});
+  const hearts=createSwarm({geometry:roundedHeartGeometry(32,12),material:new THREE.MeshPhysicalMaterial({color:'#ffffff',metalness:.5,roughness:.16,clearcoat:1,iridescence:.32,envMapIntensity:1.25}),count:320,random:randomFactory(735),target:heartVolume,palette:['#e993bc','#bc578b','#f3c8db','#d4b1a0'],size:.064,spin:.13,destination:(r,i,n)=>orbitalPosition(r,i,n,{radius:6.5,bands:3,height:4.2,depth:2.6})});
   world.body.add(hearts.mesh);
-  const sparkles=addField(world,new ParticleField(15000,r=>{const p=heartSurface(Math.acos(r()*2-1),r()*TAU),scale=.998+r()*.006;return p.map(v=>v*scale);},['#e5b2bf','#b982a8','#c8b196'],{size:.023,brightness:.6}),heart);
+  const sparkles=addField(world,new ParticleField(1800,r=>{const p=heartSurface(Math.acos(r()*2-1),r()*TAU),scale=1.015+r()*.05;return p.map(v=>v*scale);},['#f2bad5','#d3b0ed','#f0d4b9'],{size:.018,brightness:.55}),heart);
   const halo=nebula(world.body,'#bc417b',texture,[0,.2,-1],10,.1);remember(world,halo);
   nebula(world.root,'#713468',texture,[5,0,-9],24,.13);nebula(world.root,'#50357a',texture,[-8,-4,-12],22,.1);
   world.photoTarget=(i,n)=>{const a=i/n*TAU;return new THREE.Vector3(Math.cos(a)*5.1,Math.sin(a)*3.8+.3,Math.sin(a*2)*1.5+1);};
@@ -132,7 +132,7 @@ function createHeart(info,texture) {
     heart.rotation.y=-.2+Math.sin(time*.19)*.11;heart.scale.setScalar(beat*(1-dissolve*.06));
     sculpture.update(time,1-dissolve);heart.visible=dissolve<.998;
     hearts.update(time,scatter,quality,THREE.MathUtils.smoothstep(scatter,.15,.85),framing);
-    sparkles.material.uniforms.uOpacity.value=.7*(1-dissolve);halo.material.opacity=.065*(1-scatter*.35);
+    sparkles.material.uniforms.uOpacity.value=.13*(1-dissolve);halo.material.opacity=.065*(1-scatter*.35);
   };
   return world;
 }
@@ -159,7 +159,7 @@ function createTree(info,texture) {
 }
 
 function petalGeometry(length,width,lift,base) {
-  const nx=18,ny=32,positions=[],closed=[],uvs=[],indices=[];
+  const nx=24,ny=48,positions=[],closed=[],uvs=[],indices=[];
   for(let j=0;j<=ny;j++){const t=j/ny;for(let i=0;i<=nx;i++){const u=i/nx*2-1,sw=Math.pow(Math.sin(Math.PI*t),.72),x=u*width*sw,y=lift*Math.pow(t,2)+u*u*sw*t*.48+Math.sin(u*6+t*8)*Math.sin(Math.PI*t)*.02,z=base+t*length-u*u*Math.sin(Math.PI*t)*.1;positions.push(x,y,z);closed.push(x*.29,t*length*1.18+u*u*sw*.08,base*.38+Math.sin(t*Math.PI*.6)*.5);uvs.push(i/nx,t);}}
   for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){const a=j*(nx+1)+i,b=a+nx+1;indices.push(a,b,a+1,b,b+1,a+1);}
   const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geometry.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));geometry.setIndex(indices);geometry.computeVertexNormals();const folded=geometry.clone();folded.setAttribute('position',new THREE.Float32BufferAttribute(closed,3));folded.computeVertexNormals();geometry.morphAttributes.position=[folded.attributes.position];geometry.morphAttributes.normal=[folded.attributes.normal];return geometry;
@@ -168,8 +168,8 @@ function createFlower(info,texture) {
   const world=baseWorld(info,texture),flower=new THREE.Group();flower.rotation.set(.85,0,.05);world.body.add(flower);
   world.scale=1.1;
   const petals=[];
-  for(let layer=0;layer<4;layer++){const count=9-layer;const geometry=petalGeometry(3.5-layer*.57,1.18-layer*.16,.42+layer*.24,.08+layer*.035);
-    const material=new THREE.MeshPhysicalMaterial({map:petalTexture(layer),color:'#ffffff',roughness:.52,metalness:0,clearcoat:.08,clearcoatRoughness:.5,transmission:.04,thickness:.08,ior:1.35,sheen:.7,sheenColor:'#d6a5bd',sheenRoughness:.55,side:THREE.DoubleSide,envMapIntensity:.24});
+  for(let layer=0;layer<5;layer++){const count=10-layer;const geometry=petalGeometry(3.7-layer*.49,1.2-layer*.14,.4+layer*.23,.08+layer*.035);
+    const material=new THREE.MeshPhysicalMaterial({map:petalTexture(layer),color:'#ffffff',roughness:.32,metalness:.04,clearcoat:.25,clearcoatRoughness:.28,transmission:0,thickness:.13,ior:1.35,sheen:1,sheenColor:'#e8b5ed',sheenRoughness:.4,iridescence:.2,side:THREE.DoubleSide,envMapIntensity:.55});
     for(let i=0;i<count;i++){
     const petal=new THREE.Mesh(geometry,material);petal.rotation.y=i/count*TAU+layer*.46;petal.position.y=layer*.12;petal.userData={angle:petal.rotation.y,layer,baseY:petal.position.y};flower.add(petal);petals.push(petal);
   }}
