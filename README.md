@@ -79,3 +79,9 @@ npx wrangler@4.151.1 pages deploy dist --project-name zhangjian-jiaohu --branch 
 Three.js 负责三维实体、实例渲染、物理材质和辉光；MediaPipe Hand Landmarker 负责两只手的关键点识别。心形使用隐式曲面生成，散开的小爱心也使用真实三维几何。环境光、纹理与光丝由程序生成，场景材质会预先准备，缩略图由同一组三维场景实际渲染。模型、推理运行时与标题字体均随网站部署，无需第三方 API 密钥。
 
 第三方许可与模型来源见 [THIRD_PARTY.md](THIRD_PARTY.md)。
+
+## 开源与隐私
+
+维护者原创代码及原创修改采用 [MIT 许可证](LICENSE)，欢迎使用、修改、分享与贡献。第三方代码和素材保留各自原有许可，详情见 [NOTICE.md](NOTICE.md) 及仓库现有来源说明。
+
+API 密钥、真实聊天记录、用户上传文件和本地凭证不应提交；请使用环境变量或本机配置，并保留忽略规则。
