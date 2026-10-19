@@ -1,4 +1,5 @@
 import './style.css';
+import './refinements.css';
 import { WORLD_INFO } from './worlds.js';
 import { Experience } from './experience.js';
 import { GestureCamera } from './gestures.js';
@@ -24,6 +25,7 @@ const icons={
   tree:'<path d="M12 2L5 10h4l-6 7h7v5h4v-5h7l-6-7h4z"/>',
   flower:'<circle cx="12" cy="12" r="2"/><path d="M12 9c-7-10 7-10 0 0m3 2c10-7 10 7 0 0m-2 4c7 10-7 10 0 0m-4-2c-10 7-10-7 0 0"/>',
   ocean:'<path d="M3 11a9 9 0 0118 0zM6 12c-3 4 3 5 0 9m6-9c-3 4 3 5 0 9m6-9c-3 4 3 5 0 9"/>',
+  focus:'<path d="M8 3H5a2 2 0 00-2 2v3m13-5h3a2 2 0 012 2v3M3 16v3a2 2 0 002 2h3m8 0h3a2 2 0 002-2v-3"/><circle cx="12" cy="12" r="3"/>',
 };
 function icon(name){return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(icons[name]||icons.orbit)+'</svg>';}
 const app=document.getElementById('app');
@@ -34,6 +36,7 @@ app.innerHTML=`
   <header class="topbar">
     <a class="brand" href="#" aria-label="掌间交互，回到初始视角"><span class="brand-symbol">${icon('orbit')}</span><span>掌间交互</span><span class="brand-divider"></span><small>让灵感，随手发生</small></a>
     <div class="top-actions">
+      <button id="focus-button" class="text-button" type="button" aria-pressed="false">${icon('focus')}<span>沉浸观看</span></button>
       <button class="text-button guide-open" type="button">${icon('help')}<span>使用方法</span></button>
       <button id="sound-button" class="icon-button" type="button" aria-label="开启氛围音" title="开启氛围音">${icon('mute')}</button>
       <button id="fullscreen-button" class="icon-button" type="button" aria-label="全屏体验" title="全屏体验">${icon('expand')}</button>
@@ -41,11 +44,11 @@ app.innerHTML=`
   </header>
   <main class="experience-ui">
     <section class="world-intro" aria-label="当前世界">
-      <p class="eyebrow"><span></span>一个随你变化的小小世界</p>
+      <p class="eyebrow"><i></i><b id="intro-number">01</b><span id="intro-world">星际引力</span></p>
       <h1 id="world-title">把宇宙，<br>握在掌间。</h1>
       <p id="world-description" class="world-description">轻轻张开手，让星尘与星环为你流动。</p>
-      <div class="intro-rule"></div>
-      <p class="intro-note">你的手，就是这个世界的引力。</p>
+      <div class="morph-control"><span id="morph-from">聚合</span><input id="morph-range" type="range" min="0" max="100" step="1" value="0" aria-label="调节造型聚散程度"><span id="morph-to">漫游</span></div>
+      <p class="world-note"><i></i><span id="morph-note">一颗星球，等待你的引力</span></p>
     </section>
     <div class="world-caption"><span id="world-number">01</span><span class="caption-line"></span><div><strong id="world-name">星际引力</strong><small id="world-caption-sub">系统精选造型</small></div></div>
     <div class="scene-tools" aria-label="场景操作">
@@ -64,13 +67,13 @@ app.innerHTML=`
     <section class="control-deck" aria-label="选择造型并开启体验">
       <div class="deck-upper">
         <div class="gesture-tip"><span class="tip-icon">${icon('hand')}</span><div><strong id="camera-status">用手，让世界回应你</strong><span id="gesture-tip-text">开启摄像头，或直接拖动探索</span></div><span id="confirmation-progress" class="confirmation-progress" hidden></span></div>
-        <div class="deck-actions"><button id="photos-button" class="photo-button" type="button">${icon('photo')}<span>加入照片<small>可选</small></span><b id="photo-count" hidden>0</b></button><button id="camera-button" class="camera-button" type="button">${icon('camera')}<span>开启摄像头</span>${icon('arrow')}</button></div>
+        <div class="deck-actions"><button id="photos-button" class="photo-button" type="button" aria-label="加入照片（可选）" title="加入照片（可选）">${icon('photo')}<span>加入照片<small>可选</small></span><b id="photo-count" hidden>0</b></button><button id="camera-button" class="camera-button" type="button">${icon('camera')}<span>开启摄像头</span>${icon('arrow')}</button></div>
       </div>
-      <nav class="world-dock" aria-label="系统造型">${WORLD_INFO.map((world,index)=>`<button type="button" class="world-button ${index===0?'active':''}" data-world="${world.id}" aria-pressed="${index===0}"><span class="world-mini mini-${world.id}" aria-hidden="true">${icon({saturn:'orbit',heart:'heart',tree:'tree',flower:'flower',ocean:'ocean'}[world.id])}</span><span class="world-button-text"><strong>${world.label}</strong><small>${world.name}</small></span><span class="world-active-dot"></span></button>`).join('')}</nav>
+      <nav class="world-dock" aria-label="系统造型">${WORLD_INFO.map((world,index)=>`<button type="button" class="world-button ${index===0?'active':''}" data-world="${world.id}" aria-pressed="${index===0}"><span class="world-thumb" aria-hidden="true"><img data-preview="${world.id}" alt=""><span class="world-mini mini-${world.id}">${icon({saturn:'orbit',heart:'heart',tree:'tree',flower:'flower',ocean:'ocean'}[world.id])}</span></span><span class="world-button-text"><strong>${world.label}</strong><small>${world.name}</small></span><span class="world-active-dot"></span></button>`).join('')}</nav>
     </section>
     <footer class="bottom-meta"><span>影像仅在本机处理</span><div><label for="quality-select">画质</label><select id="quality-select" aria-label="选择渲染画质"><option value="auto">自动适配</option><option value="high">精致画质</option><option value="low">流畅优先</option></select><span class="meta-separator"></span><span>为每一次灵感而生</span></div></footer>
   </main>
-  <div id="loading" class="loading-overlay"><span class="loading-orbit">${icon('orbit')}</span><p>正在点亮这个世界</p><small>片刻之后，让指尖开始造境</small></div>
+  <div id="loading" class="loading-overlay"><span class="loading-orbit">${icon('orbit')}</span><p>正在点亮这个世界</p><small>光影、形态与轨迹，正为你准备好</small></div>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <dialog id="guide-dialog" class="dialog guide-dialog" aria-labelledby="guide-title">
     <button class="dialog-close" type="button" aria-label="关闭使用说明">${icon('close')}</button>
@@ -84,7 +87,7 @@ app.innerHTML=`
 `;
 
 const $=selector=>app.querySelector(selector);
-let experience,camera,toastTimer,audioContext,audioNodes=[],soundOn=false,cameraPreviewHidden=false,uploading=false;
+let experience,camera,toastTimer,audioContext,audioNodes=[],soundOn=false,cameraPreviewHidden=false,uploading=false,lastRangeInput=0,lastMotionValue=-1,lastMotionNote='';
 const guide=$('#guide-dialog'),photosDialog=$('#photos-dialog');
 function toast(message){const el=$('#toast');el.textContent=message;el.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{el.hidden=true;},4300);}
 function readStorage(key){try{return localStorage.getItem(key);}catch{return null;}}
@@ -92,6 +95,8 @@ function writeStorage(key,value){try{localStorage.setItem(key,value);}catch{}}
 function renderWorld(world){
   app.style.setProperty('--accent',world.color);app.dataset.world=world.id;
   $('#world-title').textContent=world.title;$('#world-description').textContent=world.description;$('#world-name').textContent=world.name;$('#world-number').textContent=world.number;
+  $('#intro-number').textContent=world.number;$('#intro-world').textContent=world.name;$('#morph-from').textContent=world.id==='flower'?'花苞':'聚合';$('#morph-to').textContent=world.id==='flower'?'飘散':'漫游';
+  $('.world-intro').classList.remove('world-enter');requestAnimationFrame(()=>$('.world-intro').classList.add('world-enter'));
   app.querySelectorAll('[data-world]').forEach(button=>{const active=button.dataset.world===world.id;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));});
   $('#spread-button span').textContent='展开';writeStorage('掌间交互造型',world.id);
 }
@@ -122,6 +127,13 @@ function handleHands({hands,confirmation,time}){
   if(confirmation.action==='freeze'){const frozen=experience.toggleFreeze();updateFreezeButton(frozen);toast(frozen?'场景已定格，保持竖拇指可继续。':'世界继续流动。');}
 }
 function updateFreezeButton(frozen){$('#freeze-button').innerHTML=icon(frozen?'play':'pause')+'<span>'+(frozen?'继续':'定格')+'</span>';$('#freeze-button').setAttribute('aria-label',frozen?'继续场景动画':'定格场景');}
+const motionNotes={saturn:['一颗星球，等待你的引力','星环，正在缓缓解开','让群星沿轨道漫游'],heart:['所有心动，聚在一起','松开一点，让心动流转','每一颗，都是独立的小心动'],tree:['把回忆，珍藏成一棵树','星光正在离开枝头','让星饰与记忆缓缓环绕'],flower:['花苞，等你轻轻松手','花瓣正在层层舒展','让花瓣随你的手飞舞'],ocean:['静静呼吸的一片微光','水母正在向远处游散','一群微光，自在漂游']};
+function renderMotion({fraction,expanded,world}){
+  const value=Math.round(Math.max(0,Math.min(1,fraction))*100);if(value!==lastMotionValue){lastMotionValue=value;if(performance.now()-lastRangeInput>500)$('#morph-range').value=value;$('#morph-range').style.setProperty('--fill',value+'%');}
+  const note=motionNotes[world][fraction<.2?0:fraction<.78?1:2];if(note!==lastMotionNote){lastMotionNote=note;$('#morph-note').textContent=note;}
+  const label=expanded?'聚合':'展开';if($('#spread-button span').textContent!==label)$('#spread-button span').textContent=label;
+}
+function sceneError(error){console.error(error);$('#loading').hidden=false;$('#loading').classList.remove('ready');$('#loading').innerHTML='<span class="loading-orbit">'+icon('orbit')+'</span><p>这个世界暂时未能开启</p><small>请使用支持三维渲染的新版浏览器，或在浏览器设置中开启图形加速。</small><button type="button" class="primary-button" id="reload-button">重新尝试</button>';$('#reload-button').onclick=()=>location.reload();}
 async function toggleCamera(){if(camera.running||camera.starting)camera.stop();else await camera.start();}
 function capture(){const link=document.createElement('a');link.href=experience.capture();link.download='掌间交互-'+experience.current.name+'.png';link.click();toast('已保存这一刻。');}
 function toggleAudio(){
@@ -130,12 +142,12 @@ function toggleAudio(){
 }
 
 try{
-  experience=new Experience($('#scene'),{onReady(){requestAnimationFrame(()=>{$('#loading').classList.add('ready');setTimeout(()=>{$('#loading').hidden=true;},700);});},onWorld:world=>renderWorld(world),onPhotoFocus:photo=>{$('#photo-focus').hidden=!photo;},onQuality:mode=>{if(mode==='adaptive')toast('已为当前设备自动优化画面，让互动更流畅。');}});
+  experience=new Experience($('#scene'),{onReady(){requestAnimationFrame(()=>{$('#loading').classList.add('ready');setTimeout(()=>{$('#loading').hidden=true;},700);});if(!readStorage('掌间交互已阅读引导'))setTimeout(()=>{if(!photosDialog.open&&!document.hidden)guide.showModal();},1200);},onWorld:world=>renderWorld(world),onPhotoFocus:photo=>{$('#photo-focus').hidden=!photo;app.dataset.photoFocus=photo?'yes':'no';},onQuality:mode=>{if(mode==='adaptive')toast('已为当前设备自动优化画面，让互动更流畅。');},onPreviews(previews){for(const [id,url] of Object.entries(previews)){const image=app.querySelector('[data-preview="'+id+'"]');image.src=url;image.parentElement.classList.add('ready');}},onMotion:renderMotion});
+  experience.ready.catch(sceneError);
   camera=new GestureCamera({video:$('#camera-video'),overlay:$('#camera-overlay'),onStatus:updateCameraStatus,onHands:handleHands,onError:toast});
   const saved=readStorage('掌间交互造型');if(WORLD_INFO.some(world=>world.id===saved))experience.setWorld(saved);renderWorld(experience.current);
   const quality=readStorage('掌间交互画质');if(['auto','high','low'].includes(quality)){$('#quality-select').value=quality;experience.setQuality(quality);}
-  if(!readStorage('掌间交互已阅读引导'))setTimeout(()=>{if(!photosDialog.open&&!document.hidden)guide.showModal();},1600);
-}catch(error){console.error(error);$('#loading').innerHTML='<span class="loading-orbit">'+icon('orbit')+'</span><p>这个世界暂时未能开启</p><small>请使用支持三维渲染的新版浏览器，或在浏览器设置中开启图形加速。</small><button type="button" class="primary-button" id="reload-button">重新尝试</button>';$('#reload-button').onclick=()=>location.reload();}
+}catch(error){sceneError(error);}
 
 app.querySelectorAll('[data-world]').forEach(button=>button.addEventListener('click',()=>{experience?.setWorld(button.dataset.world);renderPhotoList();}));
 $('#camera-button').addEventListener('click',()=>toggleCamera());
@@ -148,6 +160,8 @@ $('#clear-photos').addEventListener('click',()=>{[...experience.photos].forEach(
 const drop=$('#upload-zone');['dragenter','dragover'].forEach(name=>drop.addEventListener(name,event=>{event.preventDefault();drop.classList.add('dragging');}));['dragleave','drop'].forEach(name=>drop.addEventListener(name,event=>{event.preventDefault();drop.classList.remove('dragging');if(name==='drop')importPhotos(event.dataTransfer.files);}));
 $('#hide-camera').addEventListener('click',()=>{cameraPreviewHidden=true;$('#camera-panel').hidden=true;$('#show-camera').hidden=false;});$('#show-camera').addEventListener('click',()=>{cameraPreviewHidden=false;$('#camera-panel').hidden=false;$('#show-camera').hidden=true;});
 $('#spread-button').addEventListener('click',()=>{$('#spread-button span').textContent=experience.toggleSpread()?'聚合':'展开';});
+$('#morph-range').addEventListener('input',event=>{lastRangeInput=performance.now();experience.setMorph(Number(event.target.value)/100);event.target.style.setProperty('--fill',event.target.value+'%');});
+$('#focus-button').addEventListener('click',()=>{const immersive=app.dataset.immersive!=='yes';app.dataset.immersive=immersive?'yes':'no';experience.immersive=immersive;experience.resize();$('#focus-button').setAttribute('aria-pressed',String(immersive));$('#focus-button span').textContent=immersive?'返回操作':'沉浸观看';});
 $('#freeze-button').addEventListener('click',()=>updateFreezeButton(experience.toggleFreeze()));$('#reset-button').addEventListener('click',()=>{experience.resetView();updateFreezeButton(false);$('#spread-button span').textContent='展开';});$('#save-button').addEventListener('click',capture);$('#close-photo').addEventListener('click',()=>experience.clearFocus());
 $('#sound-button').addEventListener('click',toggleAudio);$('#quality-select').addEventListener('change',event=>{experience.setQuality(event.target.value);writeStorage('掌间交互画质',event.target.value);});
 $('#fullscreen-button').addEventListener('click',async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else if(document.documentElement.requestFullscreen)await document.documentElement.requestFullscreen();else toast('当前浏览器可通过“添加到主屏幕”获得更沉浸的体验。');}catch{toast('当前浏览器暂时无法进入全屏。');}});

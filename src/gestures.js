@@ -116,13 +116,13 @@ export class GestureCamera {
     if (!this.running) return;
     this.frame = requestAnimationFrame(() => this.tick());
     const now = performance.now();
-    const interval = matchMedia('(pointer: coarse)').matches ? 66 : 45;
+    const interval = matchMedia('(pointer: coarse)').matches ? 90 : 66;
     if (now - this.lastInference < interval || this.video.currentTime === this.lastVideoTime || this.video.readyState < 2) return;
     this.lastInference = now; this.lastVideoTime = this.video.currentTime;
     try {
       const result = this.model.detectForVideo(this.video, now);
       const hands = result.landmarks.map(measureHand).filter(Boolean);
-      const confirmation = this.confirmation.update(hands[0]?.pose, now);
+      const confirmation = this.confirmation.update(hands.length===1?hands[0]?.pose:null, now);
       this.onHands({ hands, confirmation, time: now });
       this.drawLandmarks(result.landmarks);
     } catch (error) {
