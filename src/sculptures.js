@@ -36,9 +36,9 @@ export function crystalHeart(geometry) {
     segment(point(j),point(j+1));
   }
   const lineGeometry=new THREE.BufferGeometry();lineGeometry.setAttribute('position',new THREE.Float32BufferAttribute(lines,3));
-  const lineMaterial=new THREE.LineBasicMaterial({color:'#ca8ca3',transparent:true,opacity:.095,depthWrite:false,blending:THREE.AdditiveBlending});
+  const lineMaterial=new THREE.LineBasicMaterial({color:'#ca8ca3',transparent:true,opacity:.025,depthWrite:false,blending:THREE.AdditiveBlending});
   root.add(new THREE.LineSegments(lineGeometry,lineMaterial));
-  return {root,material,update(time,opacity){core.visible=opacity>.005;material.opacity=.94*opacity;rimMaterial.uniforms.uTime.value=time;rimMaterial.uniforms.uOpacity.value=opacity;lineMaterial.opacity=.095*opacity;}};
+  return {root,material,update(time,opacity){core.visible=opacity>.005;material.opacity=.94*opacity;rimMaterial.uniforms.uTime.value=time;rimMaterial.uniforms.uOpacity.value=opacity;lineMaterial.opacity=.025*opacity;}};
 }
 
 export function pineBranches(random,count=1800) {

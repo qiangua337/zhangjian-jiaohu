@@ -55,11 +55,12 @@ export class Experience {
   }
   resize() {
     const w=this.container.clientWidth,h=this.container.clientHeight;if(!w||!h)return;
-    this.width=w;this.height=h;const portrait=w<700&&h>w;
+    this.width=w;this.height=h;const portrait=w<=900&&h>w,shortLandscape=h<560&&w>h,compact=portrait&&h<730;
     this.camera.aspect=w/h;
-    this.homeDistance=portrait?(h<700?37:33):18.7;
-    if(!this.wasSized||portrait!==this.wasPortrait){this.camera.position.set(0,portrait?3.1:2.3,this.homeDistance);this.controls.target.set(0,0,0);this.controls.update();this.wasSized=true;this.wasPortrait=portrait;}
-    this.camera.setViewOffset(w,h,portrait||this.immersive?0:-w*.14,portrait?-h*.015:h*.03,w,h);this.camera.updateProjectionMatrix();this.renderer.setPixelRatio(this.pixelRatio);this.renderer.setSize(w,h);this.composer.setPixelRatio(this.pixelRatio);this.composer.setSize(w,h);
+    this.homeDistance=portrait?(compact?40:33):shortLandscape?22:18.4;
+    if(!this.wasSized||portrait!==this.wasPortrait||compact!==this.wasCompact||shortLandscape!==this.wasShortLandscape){this.camera.position.set(0,portrait?3.1:2.3,this.homeDistance);this.controls.target.set(0,0,0);this.controls.update();this.wasSized=true;this.wasPortrait=portrait;this.wasCompact=compact;this.wasShortLandscape=shortLandscape;}
+    const yOffset=this.immersive?0:portrait?(h<730?h*.115:h*.09):h*.07;
+    this.camera.setViewOffset(w,h,portrait||this.immersive?0:-w*.075,yOffset,w,h);this.camera.updateProjectionMatrix();this.renderer.setPixelRatio(this.pixelRatio);this.renderer.setSize(w,h);this.composer.setPixelRatio(this.pixelRatio);this.composer.setSize(w,h);
   }
   setWorld(id) {
     const next=this.worlds.find(world=>world.id===id);if(!next||next===this.current)return;
