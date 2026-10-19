@@ -2,6 +2,8 @@
 
 一个用双手探索的三维小世界。支持电脑与手机，开启摄像头后，手掌就是场景的控制器。也可以直接拖动、缩放、点击游玩。
 
+**公开体验地址：https://zhangjian-jiaohu.pages.dev/**
+
 ## 五种造型
 
 | 造型 | 聚合 | 展开 |
@@ -52,12 +54,12 @@ npm run build
 ## Cloudflare Pages
 
 ```sh
-npx wrangler login
-npx wrangler pages project create zhangjian-jiaohu --production-branch main
-npx wrangler pages deploy dist --project-name zhangjian-jiaohu --branch main
+npx wrangler@4.151.1 login --scopes account:read user:read pages:write
+npx wrangler@4.151.1 pages project create zhangjian-jiaohu --production-branch main --force
+npx wrangler@4.151.1 pages deploy dist --project-name zhangjian-jiaohu --branch main
 ```
 
-后续更新：修改源代码，运行测试与构建，再推送 GitHub 并执行部署命令。不要把账户令牌放入源代码。
+本项目已经创建并发布，后续更新只需执行部署命令，无需重复创建项目。修改源代码后，运行测试与构建，再推送 GitHub 并执行部署。不要把账户令牌放入源代码。
 
 ## 隐私与兼容
 
