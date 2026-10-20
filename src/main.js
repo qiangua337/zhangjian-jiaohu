@@ -7,6 +7,8 @@ import { preparePhoto } from './photos.js';
 import {readSharedScene,sceneShareUrl} from './share-state.js';
 import {setupSharing} from './sharing.js';
 import './experience-flow.css';
+import {WORLD_STAGES} from './scene-layout.js';
+import './art-direction.css';
 
 const icons={
   orbit:'<ellipse cx="12" cy="12" rx="11" ry="4" transform="rotate(-30 12 12)"/><circle cx="12" cy="12" r="5"/>',
@@ -43,6 +45,7 @@ app.innerHTML=`
   <div id="scene" class="scene"></div>
   <div class="scene-vignette" aria-hidden="true"></div>
   <span id="camera-live" class="sr-only" role="status" aria-live="polite"></span>
+  <span id="stage-live" class="sr-only" role="status" aria-live="polite"></span>
   <div class="ambient-number" id="world-number" aria-hidden="true">01</div>
   <header class="topbar">
     <a class="brand" href="#" aria-label="掌间交互，回到初始视角"><span class="brand-symbol">${icon('orbit')}</span><span>掌间交互<small>让想象，随手发生</small></span></a>
@@ -61,7 +64,7 @@ app.innerHTML=`
       <h1 id="world-title">把宇宙，
 握在掌间。</h1>
       <p id="world-description" class="world-description">张开手掌，让一颗星球化作漫游的星系。</p>
-      <p class="functional-copy">用手势或触屏控制三维作品，也能加入自己的照片。</p>
+      <p class="functional-copy">轻触三维作品，让光影回应；拖动旋转，也能用手势控制。</p>
       <div class="gesture-pair"><span>${icon('fist')}握紧聚合</span><i></i><span>${icon('hand')}张开散开</span></div>
     </section>
     <section class="deck-upper" aria-label="开启手势体验">
@@ -70,7 +73,7 @@ app.innerHTML=`
       <p class="privacy-inline" id="camera-privacy">摄像头与照片只在本机处理，不上传。</p>
     </section>
     <button id="demo-button" class="demo-button" type="button" aria-label="观看自动演绎" aria-pressed="false">${icon('play')}<span>观看自动演绎</span><i></i></button>
-    <div class="scene-caption"><span id="world-name">星际引力</span><span id="world-caption-sub">由你的双手，定义形态</span></div>
+    <div class="scene-caption"><span id="world-name">星际引力</span><span id="world-caption-sub">轻触作品，让微光回应</span></div>
     <button id="tools-toggle" class="tools-toggle" type="button" aria-label="展开场景操作" aria-expanded="false" aria-controls="scene-tools"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg></button>
     <div id="scene-tools" class="scene-tools" aria-label="场景操作">
       <button id="spread-button" type="button" aria-label="展开或聚合" title="展开或聚合">${icon('hand')}<span>展开</span></button>
@@ -79,7 +82,7 @@ app.innerHTML=`
       <button id="save-button" type="button" aria-label="保存场景图片" title="保存画面">${icon('download')}<span>保存</span></button>
     </div>
     <div class="world-stepper"><button id="prev-world" type="button" aria-label="上一件作品">${icon('arrow')}</button><span>切换作品</span><button id="next-world" type="button" aria-label="下一件作品">${icon('arrow')}</button></div>
-    <section class="morph-panel" aria-label="形态控制"><div class="morph-heading"><span>展开程度</span><output id="morph-percent">已聚合</output></div><div class="morph-control"><input id="morph-range" type="range" min="0" max="100" step="1" value="0" aria-label="调节造型聚散程度"></div><div class="morph-ends"><span id="morph-from">聚合</span><span id="morph-to">漫游</span></div><p class="world-note" id="morph-note">一颗星球，等待你的引力</p></section>
+    <section class="morph-panel" aria-label="形态控制"><div class="morph-heading"><span>作品形态</span><output id="morph-percent">已聚合</output></div><div class="morph-control"><input id="morph-range" type="range" min="0" max="100" step="1" value="0" aria-label="调节造型聚散程度"></div><div class="stage-presets" role="group" aria-label="选择观赏阶段"></div><div class="morph-ends"><span id="morph-from">聚合</span><span id="morph-to">漫游</span></div><p class="world-note" id="morph-note">一颗星球，等待你的引力</p></section>
     <section id="camera-panel" class="camera-panel" aria-label="摄像头预览" hidden><div class="camera-preview"><video id="camera-video" autoplay muted playsinline></video><canvas id="camera-overlay" width="320" height="240" aria-hidden="true"></canvas><span class="camera-corner tl"></span><span class="camera-corner tr"></span><span class="camera-corner bl"></span><span class="camera-corner br"></span></div><div class="camera-panel-footer"><span id="pose-label">等待手势</span><button id="hide-camera" type="button" aria-label="收起摄像头预览">收起</button></div><p id="camera-advice" class="camera-advice">举起一只手，保持指尖完整入镜。</p></section>
     <button id="show-camera" class="show-camera" type="button" hidden>${icon('camera')}显示预览</button>
     <div id="hand-cursor" class="hand-cursor" aria-hidden="true" hidden><span></span><i></i></div>
@@ -93,7 +96,7 @@ app.innerHTML=`
     <button class="dialog-close" type="button" aria-label="关闭使用说明">${icon('close')}</button>
     <p class="dialog-eyebrow">欢迎来到掌间交互</p><h2 id="guide-title">三步，把世界握在掌间。</h2><p class="dialog-description">先看一段演绎，再用触屏、鼠标或手势接管。无需摄像头也能完整体验。</p>
     <div class="steps"><div><span>一</span><section><h3>先选一种玩法</h3><p>直接拖动、缩放即可探索。想用手势时，再开启摄像头。</p></section>${icon('camera')}</div><div><span>二</span><section><h3>选择喜欢的造型</h3><p>星环、爱心、圣诞树、花朵、水母，随时切换。</p></section>${icon('orbit')}</div><div><span>三</span><section><h3>加入你的照片 <small>可选</small></h3><p>照片会悬浮在造型中，也能被你捏合抓取。不加照片也能完整体验。</p></section>${icon('photo')}</div></div>
-    <div class="guide-gestures"><h3>你的手，可以这样玩</h3><div class="gesture-grid">${[['hand','张开手掌','展开、散开'],['fist','握紧拳头','收拢、聚合'],['refresh','移动手掌','转动作品'],['pinch','捏合指尖','抓取照片'],['point','伸出食指','画出星尘'],['victory','保持胜利手势','约一秒后切换造型'],['thumb','保持竖拇指','约一秒后定格、继续'],['zoom','双手拉开靠拢','放大、缩小']].map(([symbol,title,text])=>`<div>${icon(symbol)}<strong>${title}</strong><span>${text}</span></div>`).join('')}</div><p class="guide-footnote">切换与定格需要短暂保持手势。手机也可用单指拖动、双指缩放。点击画面右侧的「⋯」，可以展开、定格、复位或保存作品。</p></div>
+    <div class="guide-gestures"><h3>你的手，可以这样玩</h3><div class="gesture-grid">${[['hand','张开手掌','展开、散开'],['fist','握紧拳头','收拢、聚合'],['refresh','移动手掌','转动作品'],['pinch','捏合指尖','抓取照片'],['point','伸出食指','画出星尘'],['victory','保持胜利手势','约一秒后切换造型'],['thumb','保持竖拇指','约一秒后定格、继续'],['zoom','双手拉开靠拢','放大、缩小']].map(([symbol,title,text])=>`<div>${icon(symbol)}<strong>${title}</strong><span>${text}</span></div>`).join('')}</div><p class="guide-footnote">切换与定格需要短暂保持手势。轻触作品可唤起光波，完整张开手掌也会触发回应。手机可用单指拖动、双指缩放；三个观赏阶段可以直接选择。点击画面右侧的「⋯」，可以展开、定格、复位或保存作品。</p></div>
     <div class="dialog-actions"><button class="primary-button" id="guide-camera" type="button">${icon('camera')}开启摄像头，开始体验</button><button class="secondary-button" id="guide-explore" type="button">先看看系统造型 ${icon('arrow')}</button></div>
     <p class="privacy-note">只需摄像头权限，不使用麦克风。照片和摄像头画面不会上传到服务器。</p>
   </dialog>
@@ -112,6 +115,7 @@ function toast(message){const el=$('#toast');el.textContent=message;el.hidden=fa
 function readStorage(key){try{return localStorage.getItem(key);}catch{return null;}}
 function writeStorage(key,value){try{localStorage.setItem(key,value);}catch{}}
 function renderWorld(world){
+  $('.stage-presets').innerHTML=WORLD_STAGES[world.id].map(([name,value],i)=>'<button type="button" class="stage-button" data-stage="'+value+'" aria-label="'+name+'" aria-pressed="false"><i>0'+(i+1)+'</i>'+name+'</button>').join('');
   app.style.setProperty('--accent',world.color);app.dataset.world=world.id;app.dataset.tools='no';$('#tools-toggle').setAttribute('aria-expanded','false');$('#tools-toggle').setAttribute('aria-label','展开场景操作');
   $('#world-title').textContent=world.title;$('#world-description').textContent=world.description;$('#world-name').textContent=world.name;$('#world-number').textContent=world.number;$('#collection-index').textContent=world.number;
   $('#intro-number').textContent=world.number;$('#intro-world').textContent=world.name;$('#morph-from').textContent=world.id==='flower'?'花苞':'聚合';$('#morph-to').textContent=world.id==='flower'?'飘散':'漫游';
@@ -119,7 +123,7 @@ function renderWorld(world){
   app.querySelectorAll('[data-world]').forEach(button=>{const active=button.dataset.world===world.id;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));});
   $('#spread-button span').textContent='展开';writeStorage('掌间交互造型',world.id);
 }
-function renderPhotoList(){app.dataset.tools='no';$('#tools-toggle').setAttribute('aria-expanded','false');$('#tools-toggle').setAttribute('aria-label','展开场景操作');const container=$('#photo-grid');container.replaceChildren();experience.photos.forEach(photo=>{const item=document.createElement('div');item.className='photo-tile';const image=document.createElement('img');image.src=photo.thumbnail;image.alt=photo.name;const button=document.createElement('button');button.type='button';button.innerHTML=icon('close');button.setAttribute('aria-label','移除照片：'+photo.name);button.addEventListener('click',()=>{experience.removePhoto(photo.id);renderPhotoList();});item.append(image,button);container.append(item);});$('#photo-count').textContent=experience.photos.length;$('#photo-count').hidden=experience.photos.length===0;$('#clear-photos').hidden=experience.photos.length===0;$('#world-caption-sub').textContent=experience.photos.length?'已加入 '+experience.photos.length+' 张珍藏照片':'由你的双手，定义形态';}
+function renderPhotoList(){app.dataset.tools='no';$('#tools-toggle').setAttribute('aria-expanded','false');$('#tools-toggle').setAttribute('aria-label','展开场景操作');const container=$('#photo-grid');container.replaceChildren();experience.photos.forEach(photo=>{const item=document.createElement('div');item.className='photo-tile';const image=document.createElement('img');image.src=photo.thumbnail;image.alt=photo.name;const button=document.createElement('button');button.type='button';button.innerHTML=icon('close');button.setAttribute('aria-label','移除照片：'+photo.name);button.addEventListener('click',()=>{experience.removePhoto(photo.id);renderPhotoList();});item.append(image,button);container.append(item);});$('#photo-count').textContent=experience.photos.length;$('#photo-count').hidden=experience.photos.length===0;$('#clear-photos').hidden=experience.photos.length===0;$('#world-caption-sub').textContent=experience.photos.length?'已加入 '+experience.photos.length+' 张珍藏照片':'轻触作品，让微光回应';}
 async function importPhotos(files){
   if(uploading)return;uploading=true;const list=Array.from(files).filter(file=>file.type.startsWith('image/')||/\.(heic|heif|avif|jpg|jpeg|png|webp)$/i.test(file.name));if(!list.length){toast('请选择照片文件。');uploading=false;return;}
   const available=24-experience.photos.length,selected=list.slice(0,available);if(!selected.length){toast('最多加入二十四张照片，请先移除几张。');uploading=false;return;}
@@ -178,6 +182,7 @@ const motionNotes={saturn:['一颗星球，等待你的引力','星环，正在�
 function renderMotion({fraction,controlFraction=fraction,expanded,world}){
   const value=Math.round(Math.max(0,Math.min(1,fraction))*100),control=Math.round(Math.max(0,Math.min(1,controlFraction))*100),range=$('#morph-range');
   if(Number(range.value)!==control)range.value=control;range.style.setProperty('--fill',control+'%');range.setAttribute('aria-valuetext','展开程度 '+control+'%');
+  app.querySelectorAll('[data-stage]').forEach(button=>{const active=Math.abs(Number(button.dataset.stage)*100-control)<7;if(button.getAttribute('aria-pressed')!==String(active))button.setAttribute('aria-pressed',String(active));});
   if(value!==lastMotionValue||world!==lastMotionWorld){lastMotionValue=value;lastMotionWorld=world;$('#morph-percent').textContent=world==='flower'?(value<15?'花苞':value<70?'绽放':'飘散'):(value<5?'已聚合':value>94?'已散开':'展开中');}
   const note=motionNotes[world][fraction<.2?0:fraction<.78?1:2];if(note!==lastMotionNote){lastMotionNote=note;$('#morph-note').textContent=note;}
   const label=expanded?'聚合':'展开';if($('#spread-button span').textContent!==label)$('#spread-button span').textContent=label;
@@ -196,6 +201,7 @@ function toggleAudio(){
 try{
   experience=new Experience($('#scene'),{onReady(){requestAnimationFrame(()=>{$('#loading').classList.add('ready');setTimeout(()=>{$('#loading').hidden=true;},700);});if(sharedScene.spread!==null)experience.setMorph(sharedScene.spread/100,{immediate:true});else if(!readStorage('掌间交互已体验')&&!experience.reducedMotion&&!navigator.connection?.saveData)experience.setDemo(true,{once:true});},onWorld:world=>renderWorld(world),onPhotoFocus:photo=>{$('#photo-focus').hidden=!photo;app.dataset.photoFocus=photo?'yes':'no';},onQuality:mode=>{if(mode==='adaptive')toast('已为当前设备自动优化画面，让互动更流畅。');},onPreviews(previews){for(const [id,url] of Object.entries(previews)){const image=app.querySelector('[data-preview="'+id+'"]');image.src=url;image.parentElement.classList.add('ready');}},onMotion:renderMotion,motionMode:readStorage('掌间交互动态偏好')||'auto',onInteraction:()=>setManualMode(),onContext:updateContext,onReducedMotion(reduce){app.dataset.reduced=reduce?'yes':'no';$('#motion-button').setAttribute('aria-pressed',String(reduce));$('#motion-button').textContent=reduce?'动态已减少':'减少动态';},onDemo(active,detail){app.dataset.demo=active?'yes':'no';$('#demo-button').setAttribute('aria-pressed',String(active));$('#demo-button').setAttribute('aria-label',active?'停止自动演绎':'观看自动演绎');$('#demo-button').innerHTML=icon(active?'pause':'play')+'<span>'+(active?'停止自动演绎':'观看自动演绎')+'</span><i></i>';if(active&&!camera?.running){$('#camera-status').textContent=detail.once?'先看一段演绎，随时接管':'正在自动演绎';$('#gesture-tip-text').textContent='点击直接探索，或开启手势参与';}if(!active&&!camera?.running&&!camera?.starting){$('#camera-status').textContent='选择一种玩法，继续探索';$('#gesture-tip-text').textContent='无需摄像头，也能完整体验';}if(detail.completed){writeStorage('掌间交互已体验','是');$('#camera-status').textContent='轮到你了，试试直接探索';}}});
   experience.ready.catch(sceneError);
+  experience.onResponse=world=>{$('#stage-live').textContent=world.name+'已回应';};
   camera=new GestureCamera({video:$('#camera-video'),overlay:$('#camera-overlay'),onStatus:updateCameraStatus,onHands:handleHands,onError:showCameraError,onProgress:updateModelProgress});
   const saved=sharedScene.world||readStorage('掌间交互造型');if(WORLD_INFO.some(world=>world.id===saved))experience.setWorld(saved);renderWorld(experience.current);
   const quality=readStorage('掌间交互画质');if(['auto','high','low'].includes(quality)){$('#quality-select').value=quality;experience.setQuality(quality);}
@@ -212,7 +218,8 @@ $('#clear-photos').addEventListener('click',()=>{[...experience.photos].forEach(
 const drop=$('#upload-zone');['dragenter','dragover'].forEach(name=>drop.addEventListener(name,event=>{event.preventDefault();drop.classList.add('dragging');}));['dragleave','drop'].forEach(name=>drop.addEventListener(name,event=>{event.preventDefault();drop.classList.remove('dragging');if(name==='drop')importPhotos(event.dataTransfer.files);}));
 $('#hide-camera').addEventListener('click',()=>{cameraPreviewHidden=true;$('#camera-panel').hidden=true;$('#show-camera').hidden=false;});$('#show-camera').addEventListener('click',()=>{cameraPreviewHidden=false;$('#camera-panel').hidden=false;$('#show-camera').hidden=true;});
 $('#spread-button').addEventListener('click',()=>{experience.setDemo(false);$('#spread-button span').textContent=experience.toggleSpread()?'聚合':'展开';});
-$('#morph-range').addEventListener('input',event=>{experience.setDemo(false);experience.setMorph(Number(event.target.value)/100);event.target.style.setProperty('--fill',event.target.value+'%');});
+$('#morph-range').addEventListener('input',event=>{setManualMode();experience.setMorph(Number(event.target.value)/100);event.target.style.setProperty('--fill',event.target.value+'%');});
+$('.stage-presets').addEventListener('click',event=>{const button=event.target.closest('[data-stage]');if(!button)return;setManualMode();experience.setMorph(Number(button.dataset.stage),{respond:true});});
 $('#focus-button').addEventListener('click',()=>{const immersive=app.dataset.immersive!=='yes';app.dataset.immersive=immersive?'yes':'no';experience.immersive=immersive;experience.resize();const label=immersive?'返回操作':'沉浸观看';$('#focus-button').setAttribute('aria-pressed',String(immersive));$('#focus-button').setAttribute('aria-label',label);$('#focus-button').title=label;$('#focus-button span').textContent=label;});
 $('#freeze-button').addEventListener('click',()=>{experience.setDemo(false);updateFreezeButton(experience.toggleFreeze());});$('#reset-button').addEventListener('click',()=>{experience.resetView();updateFreezeButton(false);$('#spread-button span').textContent='展开';});$('#save-button').addEventListener('click',capture);$('#close-photo').addEventListener('click',()=>experience.clearFocus());
 $('#sound-button').addEventListener('click',toggleAudio);$('#quality-select').addEventListener('change',event=>{experience.setQuality(event.target.value);writeStorage('掌间交互画质',event.target.value);});

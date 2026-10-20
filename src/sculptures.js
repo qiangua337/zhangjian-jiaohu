@@ -14,20 +14,26 @@ export function heartSurface(phi,theta,depth=1.8) {
 
 export function crystalHeart(geometry) {
   const root=new THREE.Group();
-  const material=new THREE.MeshPhysicalMaterial({color:'#d36697',roughness:.16,metalness:.46,transmission:0,thickness:2.4,clearcoat:1,clearcoatRoughness:.08,ior:1.48,iridescence:.45,iridescenceIOR:1.38,iridescenceThicknessRange:[180,430],envMapIntensity:1.55,emissive:'#4a1233',emissiveIntensity:.16,transparent:true,opacity:1});
+  const motion={time:{value:0},response:{value:0}};
+  const material=new THREE.MeshPhysicalMaterial({color:'#c85490',roughness:.28,metalness:.34,transmission:0,thickness:2.4,clearcoat:.8,clearcoatRoughness:.2,ior:1.48,iridescence:.35,iridescenceIOR:1.38,iridescenceThicknessRange:[180,430],envMapIntensity:1.15,emissive:'#4a1233',emissiveIntensity:.14,transparent:true,opacity:1});
   material.onBeforeCompile=shader=>{
+    shader.uniforms.uArtTime=motion.time;shader.uniforms.uResponse=motion.response;
     shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vStone;').replace('#include <begin_vertex>','#include <begin_vertex>\nvStone=position;');
-    shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 vStone;').replace('#include <color_fragment>',`#include <color_fragment>
+    shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 vStone;uniform float uArtTime;uniform float uResponse;').replace('#include <color_fragment>',`#include <color_fragment>
       float gradient=smoothstep(-3.5,3.3,vStone.y);
-      diffuseColor.rgb*=mix(vec3(.66,.38,.62),vec3(1.15,.89,.91),gradient);`);
+      float contour=vStone.y*10.+sin(vStone.x*2.4+vStone.z*.9)*1.3+sin(vStone.z*3.-uArtTime*.18)*.38;
+      float etch=pow(.5+.5*cos(contour),75.);
+      diffuseColor.rgb*=mix(vec3(.35,.16,.44),vec3(1.07,.86,.94),gradient);
+      diffuseColor.rgb+=vec3(.09,.035,.065)*etch;`).replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
+      totalEmissiveRadiance+=vec3(.4,.08,.23)*etch*(.24+uResponse*.9);`);
   };
-  material.customProgramCacheKey=()=> 'palm-liquid-pearl-3';
+  material.customProgramCacheKey=()=> 'palm-engraved-pearl-4';
   const core=new THREE.Mesh(geometry,material);root.add(core);
   const rimMaterial=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,uniforms:{uTime:{value:0},uOpacity:{value:1}},
     vertexShader:`varying vec3 vN;varying vec3 vP;varying vec3 vLocal;void main(){vLocal=position;vN=normalize(normalMatrix*normal);vec4 mv=modelViewMatrix*vec4(position*1.003,1.);vP=mv.xyz;gl_Position=projectionMatrix*mv;}`,
     fragmentShader:`uniform float uTime;uniform float uOpacity;varying vec3 vN;varying vec3 vP;varying vec3 vLocal;void main(){float fresnel=pow(1.-abs(dot(normalize(vN),normalize(-vP))),3.);vec3 c=mix(vec3(.54,.25,.69),vec3(1.,.62,.62),smoothstep(-3.,3.,vLocal.y));gl_FragColor=vec4(c*1.35,fresnel*.32*uOpacity);}`});
   root.add(new THREE.Mesh(geometry,rimMaterial));
-  return {root,material,update(time,opacity){core.visible=opacity>.005;material.opacity=opacity;rimMaterial.uniforms.uTime.value=time;rimMaterial.uniforms.uOpacity.value=opacity;}};
+  return {root,material,update(time,opacity,response=0){motion.time.value=time;motion.response.value=response;core.visible=opacity>.005;material.opacity=opacity;rimMaterial.uniforms.uTime.value=time;rimMaterial.uniforms.uOpacity.value=opacity;}};
 }
 
 export function pineBranches(random,count=1800) {

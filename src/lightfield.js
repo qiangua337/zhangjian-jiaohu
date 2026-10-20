@@ -7,21 +7,21 @@ const vertex = `varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix
 export function createLightfield() {
   const root = new THREE.Group();
   const color = new THREE.Color('#e1bb87'), secondary = new THREE.Color('#6d82c8');
-  const uniforms = {uTime:{value:0},uColor:{value:color},uSecondary:{value:secondary},uEnergy:{value:0},uOcean:{value:0}};
+  const uniforms = {uTime:{value:0},uColor:{value:color},uSecondary:{value:secondary},uEnergy:{value:0},uOcean:{value:0},uStyle:{value:0}};
   const haze = new THREE.Mesh(new THREE.PlaneGeometry(38,27),new THREE.ShaderMaterial({
     uniforms,vertexShader:vertex,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
-    fragmentShader:`varying vec2 vUv;uniform float uTime;uniform vec3 uColor;uniform vec3 uSecondary;uniform float uEnergy;
+    fragmentShader:`varying vec2 vUv;uniform float uTime;uniform vec3 uColor;uniform vec3 uSecondary;uniform float uEnergy;uniform float uStyle;
     float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
     float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(hash(i),hash(i+vec2(1.,0.)),f.x),mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.,1.)),f.x),f.y);}
     float fbm(vec2 p){float f=0.,a=.5;for(int i=0;i<3;i++){f+=noise(p)*a;p=p*2.07+3.1;a*=.5;}return f;}
-    void main(){vec2 p=(vUv-.5)*vec2(1.25,1.);float r=length(p);float mist=fbm(p*5.+vec2(uTime*.012,-uTime*.009));float cloud=exp(-r*r*12.)*pow(mist,1.8);float halo=exp(-pow((r-.28)*18.,2.))*.14;float ray=pow(max(0.,1.-abs(p.x+p.y*.26)*2.5),8.)*exp(-length(p-vec2(.05,.12))*4.);vec3 c=mix(uSecondary,uColor,smoothstep(-.3,.4,p.x));float a=(cloud*.35+halo*.12+ray*.025)*(1.+uEnergy*.35);gl_FragColor=vec4(c*(.65+mist),a);}`
+    void main(){vec2 p=(vUv-.5)*vec2(1.25,1.);float r=length(p);float mist=fbm(p*5.+vec2(uTime*.012,-uTime*.009));float cloud=exp(-r*r*12.)*pow(mist,1.8);float halo=exp(-pow((r-.28)*18.,2.))*.14;float ray=pow(max(0.,1.-abs(p.x+p.y*.26)*2.5),8.)*exp(-length(p-vec2(.05,.12))*4.);float curtain=0.;if(uStyle>3.5){curtain=pow(max(0.,sin((p.x+p.y*.22)*32.+sin(p.y*3.+uTime*.04)*.8)),16.)*smoothstep(-.45,.3,p.y)*exp(-abs(p.x)*3.)*.11;halo=0.;}else if(uStyle>1.5&&uStyle<2.5){curtain=pow(max(0.,sin(p.x*17.+mist*3.+uTime*.045)),6.)*smoothstep(-.35,.3,p.y)*exp(-r*2.)*.035;halo=0.;}vec3 c=mix(uSecondary,uColor,smoothstep(-.3,.4,p.x));float a=(cloud*.29+halo*.08+ray*.025+curtain)*(1.+uEnergy*.35);gl_FragColor=vec4(c*(.65+mist),a);}`
   }));
   haze.position.set(0,0,-10);root.add(haze);
 
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(32,32),new THREE.ShaderMaterial({
     uniforms,vertexShader:vertex,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide,
-    fragmentShader:`varying vec2 vUv;uniform float uTime;uniform vec3 uColor;uniform vec3 uSecondary;uniform float uEnergy;uniform float uOcean;
-    void main(){vec2 p=(vUv-.5)*2.;float r=length(p);float glow=exp(-r*r*22.);float rim=exp(-pow((r-.3)*100.,2.))*.1+exp(-pow((r-.34)*170.,2.))*.055;float wave=pow(max(0.,sin(r*75.-uTime*.8)),18.)*exp(-r*7.)*.13*uOcean;float arc=.5+.5*sin(atan(p.y,p.x)*2.+uTime*.13);vec3 c=mix(uSecondary,uColor,.72);gl_FragColor=vec4(c,(glow*.035+rim*arc+wave)*(1.+uEnergy*.6));}`
+    fragmentShader:`varying vec2 vUv;uniform float uTime;uniform vec3 uColor;uniform vec3 uSecondary;uniform float uEnergy;uniform float uOcean;uniform float uStyle;
+    void main(){vec2 p=(vUv-.5)*2.;float r=length(p);float glow=exp(-r*r*22.);float rim=(exp(-pow((r-.3)*100.,2.))*.1+exp(-pow((r-.34)*170.,2.))*.055)*(1.-step(.5,uStyle));float wave=pow(max(0.,sin(r*75.-uTime*.8)),18.)*exp(-r*7.)*.13*uOcean;float arc=.5+.5*sin(atan(p.y,p.x)*2.+uTime*.13);vec3 c=mix(uSecondary,uColor,.72);gl_FragColor=vec4(c,(glow*.09+rim*arc+wave)*(1.+uEnergy*.6));}`
   }));
   floor.rotation.x=-Math.PI/2;floor.position.y=-4.7;root.add(floor);
 
@@ -48,11 +48,11 @@ export function createLightfield() {
 
   const targetColor=color.clone(),targetSecondary=secondary.clone();
   let worldId='saturn';
-  return {root,setWorld(world){worldId=world.id;targetColor.set(world.color);targetSecondary.set({saturn:'#687fd1',heart:'#9979e5',tree:'#448d7b',flower:'#9b85d4',ocean:'#a67cdb'}[world.id]);uniforms.uOcean.value=world.id==='ocean'?1:0;},
-    update(time,scatter,quality,framing,camera){
-      color.lerp(targetColor,.035);secondary.lerp(targetSecondary,.035);uniforms.uTime.value=time;uniforms.uEnergy.value=scatter;
+  return {root,setWorld(world){worldId=world.id;targetColor.set(world.color);targetSecondary.set({saturn:'#687fd1',heart:'#9979e5',tree:'#448d7b',flower:'#9b85d4',ocean:'#a67cdb'}[world.id]);uniforms.uOcean.value=world.id==='ocean'?1:0;uniforms.uStyle.value=['saturn','heart','tree','flower','ocean'].indexOf(world.id);},
+    update(time,scatter,quality,framing,camera,response=0){
+      color.lerp(targetColor,.035);secondary.lerp(targetSecondary,.035);uniforms.uTime.value=time;uniforms.uEnergy.value=scatter+response*.5;
       haze.quaternion.copy(camera.quaternion);orbits.rotation.y=time*.025;orbits.rotation.z=-.12+Math.sin(time*.08)*.035;orbits.scale.set(framing,1,1);
-      const visibility={saturn:.18,heart:.13,tree:.08,flower:.11,ocean:.09}[worldId];
+      const visibility=worldId==='saturn'?.14:0;
       orbitMaterials.forEach((m,i)=>{m.color.copy(color);m.opacity=visibility*(1-i*.2)*(1+scatter*.4);});
       dust.material.uniforms.uFraming.value=framing;geometry.setDrawRange(0,Math.max(400,Math.round(count*quality)));floor.material.uniforms.uTime.value=time;
     }

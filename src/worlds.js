@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { createSwarm, orbitalPosition } from './swarm.js';
+import { createSwarm } from './swarm.js';
 import { heartSurface, crystalHeart, pineBranches, petalTexture, orbitLines } from './sculptures.js';
 import { jellyModel as detailedJelly } from './jelly.js';
+import {heartCloud,galaxyArm,oceanCurrent} from './scene-layout.js';
 
 const TAU = Math.PI * 2;
 export const WORLD_INFO = [
@@ -89,7 +90,7 @@ function createSaturn(info, texture) {
   field.object.rotation.x=0;
   const orbitDust=addField(world,new ParticleField(2800,(r)=>{const rad=6+Math.pow(r(),.5)*5,a=r()*TAU;return [Math.cos(a)*rad,(r()-.5)*.8,Math.sin(a)*rad];},['#99a8ba','#6c76a0','#a58d70'],{size:.025,brightness:.32,seed:26}));orbitDust.object.rotation.set(.14,.2,.2);
   const moon=new THREE.Mesh(new THREE.SphereGeometry(.26,32,20),new THREE.MeshStandardMaterial({color:'#6e7784',roughness:.95,envMapIntensity:.08}));moon.position.set(5.9,1.3,-5.4);world.body.add(moon);remember(world,moon);
-  const littlePlanets=createSwarm({geometry:new THREE.SphereGeometry(1,24,16),material:new THREE.MeshStandardMaterial({map,roughness:.72,metalness:.08,envMapIntensity:.2}),count:76,random:randomFactory(818),target:r=>{const a=r()*TAU,rad=r()<.55?1.3+r()*1.1:3+r()*2.2;return[Math.cos(a)*rad,(r()-.5)*1.8,Math.sin(a)*rad];},palette:['#d1b18c','#929eac','#b89d9e'],size:.21,spin:.14,destination:(r,i,n)=>orbitalPosition(r,i,n,{radius:6.5,bands:3,height:3.8,depth:2.9})});
+  const littlePlanets=createSwarm({geometry:new THREE.SphereGeometry(1,24,16),material:new THREE.MeshStandardMaterial({map,roughness:.72,metalness:.08,envMapIntensity:.2}),count:76,random:randomFactory(818),target:r=>{const a=r()*TAU,rad=r()<.55?1.3+r()*1.1:3+r()*2.2;return[Math.cos(a)*rad,(r()-.5)*1.8,Math.sin(a)*rad];},palette:['#d1b18c','#929eac','#b89d9e'],size:.21,spin:.14,destination:galaxyArm});
   const littleRings=new THREE.InstancedMesh(new THREE.RingGeometry(1.38,2.2,48).rotateX(-1.12).rotateZ(.28),new THREE.MeshStandardMaterial({color:'#b19b77',roughness:.65,metalness:.2,side:THREE.DoubleSide}),76);littleRings.frustumCulled=false;littleRings.instanceMatrix.setUsage(THREE.DynamicDrawUsage);world.body.add(littlePlanets.mesh,littleRings);
   const orbits=orbitLines();world.body.add(orbits.group);
   sphere.material.transparent=true;
@@ -121,16 +122,16 @@ function createHeart(info,texture) {
   const geometry=roundedHeartGeometry();
   const sculpture=crystalHeart(geometry),heart=sculpture.root;heart.rotation.y=-.18;world.body.add(heart);
   const heartVolume=r=>{const p=heartSurface(Math.acos(r()*2-1),r()*TAU),k=Math.pow(r(),1/3);return p.map((v,i)=>i===1?(v+.35)*k-.35:v*k);};
-  const hearts=createSwarm({geometry:roundedHeartGeometry(32,12),material:new THREE.MeshPhysicalMaterial({color:'#ffffff',metalness:.5,roughness:.16,clearcoat:1,iridescence:.32,envMapIntensity:1.25}),count:320,random:randomFactory(735),target:heartVolume,palette:['#e993bc','#bc578b','#f3c8db','#d4b1a0'],size:.064,spin:.13,destination:(r,i,n)=>orbitalPosition(r,i,n,{radius:6.5,bands:3,height:4.2,depth:2.6})});
+  const hearts=createSwarm({geometry:roundedHeartGeometry(28,10),material:new THREE.MeshPhysicalMaterial({color:'#ffffff',metalness:.3,roughness:.26,clearcoat:.7,iridescence:.24,envMapIntensity:1.1}),count:440,random:randomFactory(735),target:heartVolume,palette:['#e993bc','#ba4a80','#edc8db','#c89fc8'],size:.065,spin:.13,destination:heartCloud});
   world.body.add(hearts.mesh);
   const sparkles=addField(world,new ParticleField(1800,r=>{const p=heartSurface(Math.acos(r()*2-1),r()*TAU),scale=1.015+r()*.05;return p.map(v=>v*scale);},['#f2bad5','#d3b0ed','#f0d4b9'],{size:.018,brightness:.55}),heart);
   const halo=nebula(world.body,'#bc417b',texture,[0,.2,-1],10,.1);remember(world,halo);
   nebula(world.root,'#713468',texture,[5,0,-9],24,.13);nebula(world.root,'#50357a',texture,[-8,-4,-12],22,.1);
   world.photoTarget=(i,n)=>{const a=i/n*TAU;return new THREE.Vector3(Math.cos(a)*5.1,Math.sin(a)*3.8+.3,Math.sin(a*2)*1.5+1);};
-  world.update=(time,scatter,openness,quality,framing)=>{
+  world.update=(time,scatter,openness,quality,framing,response=0)=>{
     const dissolve=THREE.MathUtils.smoothstep(scatter,.16,.7),beat=1+Math.sin(time*1.8)*.009;
     heart.rotation.y=-.2+Math.sin(time*.19)*.11;heart.scale.setScalar(beat*(1-dissolve*.06));
-    sculpture.update(time,1-dissolve);heart.visible=dissolve<.998;
+    sculpture.update(time,1-dissolve,response);heart.visible=dissolve<.998;
     hearts.update(time,scatter,quality,THREE.MathUtils.smoothstep(scatter,.15,.85),framing);
     sparkles.material.uniforms.uOpacity.value=.13*(1-dissolve);halo.material.opacity=.065*(1-scatter*.35);
   };
@@ -180,7 +181,7 @@ function createFlower(info,texture) {
   world.photoTarget=(i,n)=>{const a=i/n*TAU;return new THREE.Vector3(Math.cos(a)*5,Math.sin(a)*3.4,Math.sin(a)*1.5);};
   world.update=(time,scatter,openness,quality,framing)=>{
     const fold=1-THREE.MathUtils.clamp(openness,0,1),flight=THREE.MathUtils.smoothstep(scatter,.28,.94);
-    petals.forEach((petal,i)=>{const {angle,layer,baseY}=petal.userData;petal.morphTargetInfluences[0]=(1-THREE.MathUtils.smoothstep(openness,layer*.08,.68+layer*.1))*.88;petal.position.set(Math.sin(angle)*(3.2+layer*.5)*flight*framing,baseY+Math.sin(i*2.1)*2.8*flight,Math.cos(angle)*(3.2+layer*.5)*flight);petal.rotation.y=angle+flight*Math.sin(time*.14+i)*.65;petal.rotation.x=flight*Math.sin(time*.23+i)*.5;petal.rotation.z=Math.sin(time*.38+i)*(.012+flight*.35);petal.scale.setScalar(1-flight*.3);});
+    petals.forEach((petal,i)=>{const {angle,layer,baseY}=petal.userData,path=angle+flight*1.25+Math.sin(time*.1+i)*flight*.2;petal.morphTargetInfluences[0]=(1-THREE.MathUtils.smoothstep(openness,layer*.08,.68+layer*.1))*.88;petal.position.set(Math.sin(path)*(3.2+layer*.5)*flight*framing,baseY+(Math.sin(i*2.1)*2.8+(i%5)*.28-.6)*flight,Math.cos(path)*(3.2+layer*.5)*flight*.72);petal.rotation.y=path+flight*Math.sin(time*.14+i)*.3;petal.rotation.x=flight*Math.sin(time*.23+i)*.5;petal.rotation.z=Math.sin(time*.38+i)*(.012+flight*.35);petal.scale.setScalar(1-flight*.3);});
     flower.rotation.y=Math.sin(time*.12)*.1;flower.scale.setScalar(1);stamen.material.transparent=true;stamen.material.opacity=(1-fold*.9)*(1-flight);pollen.material.uniforms.uOpacity.value=.6;
   };
   return world;
@@ -189,7 +190,7 @@ function createFlower(info,texture) {
 function createOcean(info,texture) {
   const world=baseWorld(info,texture),jellies=[detailedJelly(1,[0,1.4,0]),detailedJelly(.28,[-4.3,2.3,-4],{detail:.5}),detailedJelly(.38,[4.1,.4,-5],{detail:.5})];jellies.forEach(j=>world.body.add(j.root));
   const nursery=detailedJelly(1,[0,0,0],{detail:.5}),babyCount=26;
-  const babies=createSwarm({geometry:nursery.bellGeometry,material:nursery.material,count:babyCount,random:randomFactory(644),target:r=>{const a=r()*TAU,rad=r()*1.6;return[Math.cos(a)*rad,1+r()*1.5,Math.sin(a)*rad];},palette:['#9deae7','#c5aceb'],size:.23,spin:.04,destination:(r,i,n)=>orbitalPosition(r,i,n,{radius:6,bands:3,height:4.4,depth:3})});
+  const babies=createSwarm({geometry:nursery.bellGeometry,material:nursery.material,count:babyCount,random:randomFactory(644),target:r=>{const a=r()*TAU,rad=r()*1.6;return[Math.cos(a)*rad,1+r()*1.5,Math.sin(a)*rad];},palette:['#9deae7','#c5aceb'],size:.23,spin:.04,destination:oceanCurrent});
   const parts=[[nursery.tendrilGeometry,nursery.tendrilMaterial],[nursery.armGeometry,nursery.armMaterial],[nursery.ring.geometry,nursery.ring.material],[nursery.organGeometry,nursery.organMaterial]].map(([geometry,material])=>{const mesh=new THREE.InstancedMesh(geometry,material,babyCount);mesh.frustumCulled=false;mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);return mesh;});world.body.add(babies.mesh,...parts);
   addField(world,new ParticleField(2000,r=>[(r()-.5)*18,(r()-.5)*15,-2-r()*10],['#547f91','#747a9c','#6eaaa9'],{size:.035,brightness:.35}));
   nebula(world.root,'#1b627b',texture,[0,7,-10],27,.16);nebula(world.root,'#263955',texture,[-6,-5,-10],23,.13);
@@ -211,7 +212,7 @@ export function makeStarfield() {
   const rng=randomFactory(2026),field=new ParticleField(1600,()=>{const a=rng()*TAU,z=rng()*2-1,r=35+rng()*32,s=Math.sqrt(1-z*z);return[Math.cos(a)*s*r,z*r,Math.sin(a)*s*r];},['#b5bacb','#91a3bf','#a99a9b'],{size:.085,brightness:.48});return field;
 }
 
-export function updateWorld(world,time,scatter,openness,quality,framing=1) {
+export function updateWorld(world,time,scatter,openness,quality,framing=1,response=0) {
   world.fields.forEach(field=>{field.update(time,scatter);field.quality(quality);});
-  world.update?.(time,scatter,openness,quality,framing);
+  world.update?.(time,scatter,openness,quality,framing,response);
 }
