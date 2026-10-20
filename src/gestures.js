@@ -1,3 +1,6 @@
+import {downloadBinary} from './asset-loader.js';
+import {GestureFeedback} from './gesture-feedback.js';
+
 const clamp = (value, low = 0, high = 1) => Math.min(high, Math.max(low, value));
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
@@ -47,36 +50,43 @@ export class PoseConfirmation {
 }
 
 export class GestureCamera {
-  constructor({ video, overlay, onStatus, onHands, onError }) {
-    Object.assign(this, { video, overlay, onStatus, onHands, onError });
+  constructor({ video, overlay, onStatus, onHands, onError, onProgress=()=>{} }) {
+    Object.assign(this, { video, overlay, onStatus, onHands, onError, onProgress });
+    this.feedback=new GestureFeedback();this.luminance=null;
     this.running = false; this.starting = false; this.sequence = 0; this.stream = null;
     this.frame = null; this.model = null; this.lastVideoTime = -1; this.lastInference = 0;
     this.confirmation = new PoseConfirmation();
     this.handleVisibility = () => { if (document.hidden && (this.running || this.starting)) this.stop(); };
     document.addEventListener('visibilitychange', this.handleVisibility);
   }
-  async loadModel() {
-    if (this.model) return this.model;
-    if (this.modelLoading) return this.modelLoading;
-    this.modelLoading=this.createModel();
-    try { return await this.modelLoading; }
-    finally { this.modelLoading=null; }
+  async loadModel(signal,report) {
+    if(this.model)return this.model;
+    if(this.modelLoading){try{await this.modelLoading;}catch{}if(signal.aborted)throw new DOMException('已取消','AbortError');if(this.model)return this.model;}
+    const loading=this.createModel(signal,report);this.modelLoading=loading;
+    try{return await loading;}finally{if(this.modelLoading===loading)this.modelLoading=null;}
   }
-  async createModel() {
+  async createModel(signal,report) {
+    report({phase:'runtime',ratio:null});
     const { FilesetResolver, HandLandmarker } = await import('@mediapipe/tasks-vision');
+    if(signal.aborted)throw new DOMException('已取消','AbortError');
     const vision = await FilesetResolver.forVisionTasks('/vision');
+    const buffer=await downloadBinary('/models/hand_landmarker.task?v=1',{signal,expectedBytes:7819105,onProgress:p=>report({phase:'download',...p})});
+    if(signal.aborted)throw new DOMException('已取消','AbortError');
+    report({phase:'initializing',ratio:null});
     const options = {
-      baseOptions: { modelAssetPath: '/models/hand_landmarker.task', delegate: 'GPU' },
+      baseOptions: { modelAssetBuffer:buffer, delegate: 'GPU' },
       runningMode: 'VIDEO', numHands: 2,
       minHandDetectionConfidence: 0.55, minHandPresenceConfidence: 0.55, minTrackingConfidence: 0.55,
     };
     try { this.model = await HandLandmarker.createFromOptions(vision, options); }
-    catch { options.baseOptions.delegate = 'CPU'; this.model = await HandLandmarker.createFromOptions(vision, options); }
+    catch(error) {if(signal.aborted)throw error;report({phase:'adjusting',ratio:null});options.baseOptions.delegate = 'CPU';this.model = await HandLandmarker.createFromOptions(vision, options);}
+    if(this.disposed){this.model.close();this.model=null;throw new DOMException('已关闭','AbortError');}
     return this.model;
   }
   async start() {
     if (this.running || this.starting) return;
     const sequence = ++this.sequence;
+    const controller=new AbortController();this.startController=controller;
     this.starting = true;
     this.onStatus({ state: 'permission', text: '请允许摄像头访问' });
     try {
@@ -90,11 +100,12 @@ export class GestureCamera {
       this.stream = stream;
       this.video.srcObject = stream;
       await this.video.play();
+      if (sequence !== this.sequence) return;
       this.onStatus({ state: 'loading', text: '正在准备手势识别' });
-      await this.loadModel();
+      await this.loadModel(controller.signal,progress=>{if(sequence===this.sequence)this.onProgress(progress);});
       if (sequence !== this.sequence) return;
       this.running = true; this.starting = false;
-      this.lastVideoTime = -1;
+      this.lastVideoTime = -1;this.feedback.reset(performance.now());this.luminance=null;this.lastLightSample=0;
       stream.getVideoTracks()[0]?.addEventListener('ended', () => { if (this.running) this.stop(); }, { once: true });
       this.onStatus({ state: 'ready', text: '举起一只手，让世界回应你' });
       this.tick();
@@ -109,8 +120,8 @@ export class GestureCamera {
         InsecureContext: '请通过 HTTPS 网站或本机 localhost 打开，再开启摄像头。',
       };
       this.onStatus({ state: 'error', text: '摄像头暂未开启' });
-      this.onError(errors[error.name] || '手势识别暂时未能加载，请检查网络后重试。');
-    }
+      this.onError(errors[error.name] || '识别资源暂时未能准备好。可以重试或换用系统浏览器，也可以先直接探索。');
+    } finally {if(this.startController===controller)this.startController=null;}
   }
   tick() {
     if (!this.running) return;
@@ -123,11 +134,23 @@ export class GestureCamera {
       const result = this.model.detectForVideo(this.video, now);
       const hands = result.landmarks.map(measureHand).filter(Boolean);
       const confirmation = this.confirmation.update(hands.length===1?hands[0]?.pose:null, now);
-      this.onHands({ hands, confirmation, time: now });
+      const guidance=this.feedback.update({time:now,hasHands:hands.length>0,luminance:this.sampleLight(now)});
+      this.onHands({ hands, confirmation, guidance, time: now });
       this.drawLandmarks(result.landmarks);
     } catch (error) {
       if (!this.inferenceFailed) { this.inferenceFailed = true; console.warn('Hand inference failed', error); this.onError('手势识别暂时中断，关闭摄像头后可以重新开启。'); }
     }
+  }
+  sampleLight(now){
+    if(now-(this.lastLightSample||0)<900)return this.luminance;
+    this.lastLightSample=now;
+    try{
+      if(!this.lightCanvas){this.lightCanvas=document.createElement('canvas');this.lightCanvas.width=16;this.lightCanvas.height=12;this.lightContext=this.lightCanvas.getContext('2d',{willReadFrequently:true});}
+      const ctx=this.lightContext;ctx.drawImage(this.video,0,0,16,12);const pixels=ctx.getImageData(0,0,16,12).data;let value=0;
+      for(let i=0;i<pixels.length;i+=4)value+=pixels[i]*.2126+pixels[i+1]*.7152+pixels[i+2]*.0722;
+      this.luminance=value/(192*255);
+    }catch{this.luminance=null;}
+    return this.luminance;
   }
   drawLandmarks(hands) {
     const canvas = this.overlay;
@@ -142,14 +165,14 @@ export class GestureCamera {
     });
   }
   stop(notify = true) {
-    ++this.sequence; this.running = false; this.starting = false;
+    ++this.sequence;this.startController?.abort();this.startController=null; this.running = false; this.starting = false;
     cancelAnimationFrame(this.frame); this.frame = null;
     this.stream?.getTracks().forEach(track => track.stop()); this.stream = null;
     this.video.pause(); this.video.srcObject = null;
-    this.confirmation.reset(); this.inferenceFailed = false;
+    this.confirmation.reset();this.feedback.reset(0);this.luminance=null;this.lightContext?.clearRect(0,0,16,12); this.inferenceFailed = false;
     this.overlay.getContext('2d').clearRect(0, 0, this.overlay.width, this.overlay.height);
     this.onHands({ hands: [], confirmation: { progress: 0, action: null }, time: performance.now() });
     if (notify) this.onStatus({ state: 'off', text: '摄像头已关闭' });
   }
-  dispose() { this.stop(); this.model?.close(); document.removeEventListener('visibilitychange', this.handleVisibility); }
+  dispose() { this.disposed=true;this.stop(); this.model?.close(); document.removeEventListener('visibilitychange', this.handleVisibility); }
 }

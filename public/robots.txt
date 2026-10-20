@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://zhangjian-jiaohu.pages.dev/sitemap.xml
