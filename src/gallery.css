@@ -1,0 +1,52 @@
+.loading-overlay{transition:opacity .35s,visibility .35s}
+.immersive-save{display:none}#app[data-immersive=yes] .immersive-save{display:grid}#app[data-immersive=yes] .top-actions .guide-open{display:none}
+.footer-links{display:flex;align-items:center;gap:18px}
+.about-shortcut{font-size:9px;color:#a99ab5;min-height:24px;padding:3px 0;pointer-events:auto}
+.about-shortcut:hover{color:var(--accent)}
+.sample-album-entry{display:flex;align-items:center;gap:14px;margin:20px 0 15px;padding:14px;border:1px solid #ffffff13;border-radius:12px;background:#ffffff03}
+.sample-album-entry button{flex-shrink:0;font-size:11px;padding:11px 15px}
+.sample-album-entry>span{font-size:10px;line-height:1.8;color:#a99ab5}
+.photo-dialog-actions{display:grid;grid-template-columns:1.2fr 1fr;gap:10px;margin-top:24px;position:sticky;bottom:-1px;padding:12px 0 2px;background:linear-gradient(180deg,#17111d00,#17111df5 20%);z-index:2}
+.photo-dialog-actions button{min-height:45px;justify-content:center}
+.photo-tile img{object-fit:contain;background:#100d18}
+.photo-focus{position:fixed;top:112px;left:50%;transform:translateX(-50%);width:min(560px,calc(100% - 60px));display:flex;justify-content:space-between;gap:15px;border:1px solid #ffffff1e;border-radius:16px;padding:9px 10px 9px 18px;background:#17101fdb;backdrop-filter:blur(20px);z-index:12}
+.photo-focus-caption{flex:1;min-width:0;align-self:center}
+.photo-focus-caption span{display:block;font-size:9px;color:#a697b4;letter-spacing:1px;margin-bottom:5px}
+.photo-focus-caption strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:400;color:#eadfea}
+.photo-focus-actions{display:flex;align-items:center;gap:5px}
+.photo-focus button{min-height:40px;min-width:40px;justify-content:center;padding:10px;white-space:nowrap;border-radius:10px}
+.photo-focus button:disabled{cursor:default;opacity:.24}
+.photo-focus button svg{width:15px;height:15px}
+#prev-photo svg{transform:rotate(180deg)}
+#close-photo{gap:7px;font-size:10px;padding:10px 13px}
+#app[data-photo-focus=yes] .control-deck,#app[data-photo-focus=yes] .ambient-number,#app[data-photo-focus=yes] .world-stepper{visibility:hidden;opacity:0;pointer-events:none}
+#app[data-photo-focus=yes] .scene-tools{display:none}
+#app[data-photo-focus=yes] .scene-vignette{background:radial-gradient(ellipse at center,transparent 60%,#08091066);box-shadow:none}
+#app[data-photo-focus=yes] .bottom-meta>div,#app[data-photo-focus=yes] #focus-button{display:none}
+#app[data-photo-focus=yes] .deck-upper{top:auto;bottom:26px;left:auto;right:28px;width:160px}
+#app[data-photo-focus=yes] .gesture-tip,#app[data-photo-focus=yes] .privacy-inline,#app[data-photo-focus=yes] #explore-button{display:none}
+#app[data-photo-focus=yes]:not([data-camera=on]):not([data-camera=loading]) .deck-upper{display:none}
+#app[data-photo-focus=yes] .deck-actions{display:flex;padding:0}
+#app[data-photo-focus=yes] #camera-button{min-width:150px}
+#app[data-photo-focus=yes] .camera-panel,#app[data-photo-focus=yes] .show-camera{left:auto;right:28px;top:auto;bottom:95px}
+#app[data-photo-focus=yes] .bottom-meta{left:28px;right:auto;bottom:28px}
+.about-dialog{width:min(660px,calc(100% - 44px))}
+.about-section{margin-top:24px;padding-top:22px;border-top:1px solid #ffffff13}
+.about-section h3{font-size:13px;font-weight:450;letter-spacing:.5px;margin:0 0 12px;color:#e2d5e8}
+.about-section p{font-size:12px;line-height:1.95;color:#b7a8c2;margin:0 0 12px}
+.about-section .secondary-button,.about-section .primary-button{font-size:11px;min-height:40px}
+.about-section small{display:block;font-size:10px;line-height:1.8;color:#a494b1;margin-top:13px}
+.about-links{display:flex;gap:10px;flex-wrap:wrap}
+.feedback-template{width:100%;min-height:150px;margin-top:10px;border:1px solid #ffffff20;border-radius:8px;padding:12px;background:#0c0a13;color:#d1c2dc;font-size:11px;line-height:1.8}#feedback-status:empty{display:none}#feedback-status{margin-top:14px;color:var(--accent)}
+@media(max-width:900px) and (orientation:portrait){
+ .footer-links{gap:12px}.about-shortcut{font-size:10px}.privacy-inline{font-size:9px;line-height:1.6}.gesture-tip strong{font-size:10px}
+ .sample-album-entry{align-items:stretch;flex-direction:column;gap:8px;margin-top:17px;padding:12px}.sample-album-entry button{min-height:42px}.sample-album-entry>span{font-size:10px;text-align:center}
+ .photo-dialog-actions{gap:8px;margin-top:19px}.photo-dialog-actions button{padding:12px 10px;font-size:11px}
+ .photo-focus{top:88px;width:calc(100% - 40px);padding:8px 8px 8px 13px;border-radius:13px;gap:9px}
+ .photo-focus-caption span{font-size:10px;margin-bottom:4px}.photo-focus-caption strong{font-size:11px}
+ .photo-focus-actions{gap:3px}.photo-focus button{min-width:36px;min-height:40px;padding:9px}#close-photo{font-size:9px;padding:9px;gap:5px}
+ #app[data-photo-focus=yes] .bottom-meta{left:24px;bottom:18px}#app[data-photo-focus=yes] .deck-upper{right:24px;bottom:20px}#app[data-photo-focus=yes] .camera-panel,#app[data-photo-focus=yes] .show-camera{right:24px;bottom:90px}
+ .about-dialog{width:calc(100% - 28px);padding:30px 22px}.about-section h3{font-size:13px}.about-section p,.about-dialog .dialog-description{font-size:12px}.about-links{display:grid;grid-template-columns:1fr}.about-links a{justify-content:center}
+}
+@media(max-height:730px) and (orientation:portrait){.photo-focus{top:72px;width:calc(100% - 34px)}.footer-links{gap:9px}.about-shortcut{font-size:9px}.privacy-inline{font-size:9px}.gesture-tip strong{font-size:9px}#app[data-photo-focus=yes] .bottom-meta{bottom:12px}}
+@media(orientation:landscape) and (max-height:560px){.photo-focus{top:67px;width:min(560px,calc(100% - 60px));padding:5px 8px 5px 13px}.photo-focus button{min-height:34px}.photo-focus-caption span{font-size:8px;margin-bottom:3px}.photo-focus-caption strong{font-size:10px}.footer-links{gap:11px}.about-shortcut{font-size:7px;min-height:18px}#app[data-photo-focus=yes] .bottom-meta{left:26px;right:auto;bottom:10px}#app[data-photo-focus=yes] .deck-upper{bottom:15px;right:22px}.sample-album-entry{margin-top:15px}}

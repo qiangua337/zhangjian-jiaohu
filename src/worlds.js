@@ -4,6 +4,7 @@ import { createSwarm } from './swarm.js';
 import { heartSurface, crystalHeart, pineBranches, petalTexture, orbitLines } from './sculptures.js';
 import { jellyModel as detailedJelly } from './jelly.js';
 import {heartCloud,galaxyArm,oceanCurrent} from './scene-layout.js';
+import {LazyWorldStore} from './world-store.js';
 
 const TAU = Math.PI * 2;
 export const WORLD_INFO = [
@@ -204,9 +205,10 @@ function createOcean(info,texture) {
   return world;
 }
 
-export function createWorlds() {
-  const texture=glowTexture();
-  return [createSaturn(WORLD_INFO[0],texture),createHeart(WORLD_INFO[1],texture),createTree(WORLD_INFO[2],texture),createFlower(WORLD_INFO[3],texture),createOcean(WORLD_INFO[4],texture)];
+export function createWorldStore() {
+  let texture;
+  const factories={saturn:createSaturn,heart:createHeart,tree:createTree,flower:createFlower,ocean:createOcean};
+  return new LazyWorldStore(Object.fromEntries(WORLD_INFO.map(info=>[info.id,()=>factories[info.id](info,texture||=(glowTexture()))])));
 }
 export function makeStarfield() {
   const rng=randomFactory(2026),field=new ParticleField(1600,()=>{const a=rng()*TAU,z=rng()*2-1,r=35+rng()*32,s=Math.sqrt(1-z*z);return[Math.cos(a)*s*r,z*r,Math.sin(a)*s*r];},['#b5bacb','#91a3bf','#a99a9b'],{size:.085,brightness:.48});return field;

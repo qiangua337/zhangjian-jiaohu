@@ -1,5 +1,6 @@
 import {downloadBinary} from './asset-loader.js';
 import {GestureFeedback} from './gesture-feedback.js';
+import {HandSignalFilter} from './hand-filter.js';
 
 const clamp = (value, low = 0, high = 1) => Math.min(high, Math.max(low, value));
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -29,7 +30,7 @@ export function measureHand(points) {
   if (pose === 'palm' && openness < 0.25) pose = 'fist';
   const center = { x: (points[0].x + points[5].x + points[17].x) / 3, y: (points[0].y + points[9].y) / 2 };
   return {
-    pose, openness, pinch, palm,
+    pose, openness, pinch, pinchRatio, palm,
     x: clamp(1 - center.x), y: clamp(center.y),
     pointer: { x: clamp(1 - points[8].x), y: clamp(points[8].y) },
     grab: { x: clamp(1 - (points[8].x + points[4].x) / 2), y: clamp((points[8].y + points[4].y) / 2) },
@@ -52,7 +53,7 @@ export class PoseConfirmation {
 export class GestureCamera {
   constructor({ video, overlay, onStatus, onHands, onError, onProgress=()=>{} }) {
     Object.assign(this, { video, overlay, onStatus, onHands, onError, onProgress });
-    this.feedback=new GestureFeedback();this.luminance=null;
+    this.feedback=new GestureFeedback();this.filter=new HandSignalFilter();this.luminance=null;
     this.running = false; this.starting = false; this.sequence = 0; this.stream = null;
     this.frame = null; this.model = null; this.lastVideoTime = -1; this.lastInference = 0;
     this.confirmation = new PoseConfirmation();
@@ -105,7 +106,7 @@ export class GestureCamera {
       await this.loadModel(controller.signal,progress=>{if(sequence===this.sequence)this.onProgress(progress);});
       if (sequence !== this.sequence) return;
       this.running = true; this.starting = false;
-      this.lastVideoTime = -1;this.feedback.reset(performance.now());this.luminance=null;this.lastLightSample=0;
+      this.lastVideoTime = -1;this.feedback.reset(performance.now());this.filter.reset();this.luminance=null;this.lastLightSample=0;
       stream.getVideoTracks()[0]?.addEventListener('ended', () => { if (this.running) this.stop(); }, { once: true });
       this.onStatus({ state: 'ready', text: '举起一只手，让世界回应你' });
       this.tick();
@@ -132,7 +133,7 @@ export class GestureCamera {
     this.lastInference = now; this.lastVideoTime = this.video.currentTime;
     try {
       const result = this.model.detectForVideo(this.video, now);
-      const hands = result.landmarks.map(measureHand).filter(Boolean);
+      const hands = this.filter.update(result.landmarks.map(measureHand).filter(Boolean),now);
       const confirmation = this.confirmation.update(hands.length===1?hands[0]?.pose:null, now);
       const guidance=this.feedback.update({time:now,hasHands:hands.length>0,luminance:this.sampleLight(now)});
       this.onHands({ hands, confirmation, guidance, time: now });
@@ -169,7 +170,7 @@ export class GestureCamera {
     cancelAnimationFrame(this.frame); this.frame = null;
     this.stream?.getTracks().forEach(track => track.stop()); this.stream = null;
     this.video.pause(); this.video.srcObject = null;
-    this.confirmation.reset();this.feedback.reset(0);this.luminance=null;this.lightContext?.clearRect(0,0,16,12); this.inferenceFailed = false;
+    this.confirmation.reset();this.filter.reset();this.feedback.reset(0);this.luminance=null;this.lightContext?.clearRect(0,0,16,12); this.inferenceFailed = false;
     this.overlay.getContext('2d').clearRect(0, 0, this.overlay.width, this.overlay.height);
     this.onHands({ hands: [], confirmation: { progress: 0, action: null }, time: performance.now() });
     if (notify) this.onStatus({ state: 'off', text: '摄像头已关闭' });

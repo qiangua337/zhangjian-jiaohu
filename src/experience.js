@@ -4,20 +4,22 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { createWorlds, makeStarfield, updateWorld, WORLD_INFO, randomFactory } from './worlds.js';
+import { createWorldStore, makeStarfield, updateWorld, WORLD_INFO, randomFactory } from './worlds.js';
 import { studioEnvironment, createAtmosphere } from './atmosphere.js';
 import { orbitalPosition } from './swarm.js';
 import { createLightfield } from './lightfield.js';
 import {bindContextRecovery} from './context-recovery.js';
 import {Resonance} from './resonance.js';
 import {createResponseField} from './response-field.js';
+import {cappedPixelRatio} from './world-store.js';
+import {fittedPhotoScale} from './photo-layout.js';
 
 const PORTRAIT_SHAPES={heart:{normal:.79,compact:.78,offset:-.5},flower:{normal:.65,compact:.62,offset:-.22},ocean:{normal:.84,compact:.8,offset:.18}};
 const PORTRAIT_WIDTH={heart:.76,flower:.82,ocean:.7};
 
 export class Experience {
-  constructor(container, { onReady=()=>{}, onWorld=()=>{}, onPhotoFocus=()=>{}, onQuality=()=>{}, onPreviews=()=>{}, onMotion=()=>{}, onDemo=()=>{},onInteraction=()=>{},onContext=()=>{},onReducedMotion=()=>{},onResponse=()=>{},motionMode='auto' }={}) {
-    Object.assign(this,{container,onReady,onWorld,onPhotoFocus,onQuality,onPreviews,onMotion,onDemo,onInteraction,onContext,onReducedMotion,onResponse});
+  constructor(container, { onReady=()=>{}, onWorld=()=>{}, onPhotoFocus=()=>{}, onQuality=()=>{}, onMotion=()=>{}, onDemo=()=>{},onInteraction=()=>{},onContext=()=>{},onReducedMotion=()=>{},onResponse=()=>{},getPhotoArea=()=>null,motionMode='auto',initialWorld='saturn' }={}) {
+    Object.assign(this,{container,onReady,onWorld,onPhotoFocus,onQuality,onMotion,onDemo,onInteraction,onContext,onReducedMotion,onResponse,getPhotoArea});
     this.motionQuery=matchMedia('(prefers-reduced-motion: reduce)');this.motionOverridden=['reduce','full'].includes(motionMode);this.reducedMotion=this.motionOverridden?motionMode==='reduce':this.motionQuery.matches;
     this.motionHandler=()=>{if(!this.motionOverridden)this.setReducedMotion(this.motionQuery.matches);};this.motionQuery.addEventListener?.('change',this.motionHandler);
     this.scene=new THREE.Scene();this.scene.background=new THREE.Color('#060a13');
@@ -39,9 +41,9 @@ export class Experience {
     this.controls.enableDamping=!this.reducedMotion;this.onReducedMotion(this.reducedMotion);
     this.controls.addEventListener('start',()=>{this.onInteraction();this.setDemo(false);this.lastUserInput=performance.now();this.controls.autoRotate=false;});
     this.composer=new EffectComposer(this.renderer);this.composer.addPass(new RenderPass(this.scene,this.camera));this.bloom=new UnrealBloomPass(new THREE.Vector2(512,512),.6,.8,1.05);this.composer.addPass(this.bloom);this.composer.addPass(new OutputPass());
-    this.worlds=createWorlds();this.worlds.forEach(world=>{world.root.visible=false;this.scene.add(world.root);});this.current=this.worlds[0];this.current.root.visible=true;
+    this.worldStore=createWorldStore();this.current=this.getWorld(initialWorld);this.current.root.visible=true;this.setScenePalette(this.current);
     this.stars=makeStarfield();this.scene.add(this.stars.object);
-    this.scatter=0;this.targetScatter=0;this.controlFraction=0;this.open=1;this.targetOpen=1;this.yaw=0;this.pitch=0;this.targetYaw=0;this.targetPitch=0;this.elapsed=0;this.frozen=false;this.lastTime=performance.now();this.lastUserInput=0;this.hasHands=false;this.photoLayer=new THREE.Group();this.scene.add(this.photoLayer);this.photos=[];this.photoFaces=[];this.raycaster=new THREE.Raycaster();this.pointer=new THREE.Vector2();this.lastPinch=false;this.grabbed=null;this.focused=null;this.lastDoubleHandDistance=null;
+    this.scatter=0;this.targetScatter=0;this.controlFraction=this.current.id==='flower'?.55:0;this.open=1;this.targetOpen=1;this.yaw=0;this.pitch=0;this.targetYaw=0;this.targetPitch=0;this.elapsed=0;this.frozen=false;this.lastTime=performance.now();this.lastUserInput=0;this.hasHands=false;this.photoLayer=new THREE.Group();this.scene.add(this.photoLayer);this.photos=[];this.photoFaces=[];this.raycaster=new THREE.Raycaster();this.pointer=new THREE.Vector2();this.lastPinch=false;this.grabbed=null;this.focused=null;this.lastDoubleHandDistance=null;
     this.makeTrail();
     this.resonance=new Resonance();this.responseField=createResponseField();this.scene.add(this.responseField.root);
     this.resizeObserver=new ResizeObserver(()=>this.resize());this.resizeObserver.observe(container);this.resize();
@@ -54,20 +56,15 @@ export class Experience {
     this.renderer.domElement.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();this.onInteraction();this.pulse();}});
     this.slowTime=0;this.performanceFrames=0;this.performanceTime=0;this.performanceAdjusted=false;
     this.removeContextRecovery=bindContextRecovery(this.renderer.domElement,{pause:()=>{this.contextLost=true;cancelAnimationFrame(this.frame);this.setDemo(false);this.onContext('lost');},rebuild:()=>this.restoreGraphics(),resume:()=>{this.contextLost=false;this.resumeRendering();},onState:(state)=>{if(state!=='lost')this.onContext(state);}});
-    this.ready=this.preparePreviews().then(()=>{if(this.disposed)return;this.prepared=true;this.resumeRendering();this.onReducedMotion(this.reducedMotion);this.onReady();});
+    this.ready=this.prepareCurrentWorld().then(()=>{if(this.disposed)return;this.prepared=true;this.resumeRendering();this.onReducedMotion(this.reducedMotion);this.onReady();});
   }
   resumeRendering(){if(this.disposed||this.contextLost||!this.prepared)return;cancelAnimationFrame(this.frame);this.lastTime=performance.now();this.frame=requestAnimationFrame(time=>this.render(time));}
-  async preparePreviews() {
-    this.worlds.forEach(world=>{world.root.visible=true;world.root.scale.setScalar(world.scale);updateWorld(world,1,0,1,.55,1);});
+  getWorld(id){const world=this.worldStore.get(id);if(!world.root.parent){world.root.visible=false;this.scene.add(world.root);}return world;}
+  setScenePalette(world){this.scene.background.set(world.bg);this.atmosphere.setWorld(world);this.lightfield.setWorld(world);this.bloom.strength={flower:.38,tree:.7,ocean:.7,heart:.4}[world.id]||.58;this.bloom.threshold=world.id==='flower'?1.2:1.05;}
+  async prepareCurrentWorld(){
+    this.current.root.scale.setScalar(this.current.scale);updateWorld(this.current,0,0,1,this.quality,1);
     if(this.renderer.compileAsync)await this.renderer.compileAsync(this.scene,this.camera);
-    if(this.disposed)return;
-    const previews={},previewCamera=new THREE.PerspectiveCamera(36,180/112,.1,100);previewCamera.position.set(0,2,20);previewCamera.lookAt(0,0,0);
-    this.stars.object.visible=false;this.atmosphere.mesh.visible=false;this.lightfield.root.visible=false;this.trail.object.visible=false;this.photoLayer.visible=false;
-    this.renderer.setPixelRatio(1);this.renderer.setSize(180,112,false);
-    for(const world of this.worlds){
-      this.worlds.forEach(item=>item.root.visible=item===world);this.scene.background.set(world.bg);this.renderer.render(this.scene,previewCamera);previews[world.id]=this.renderer.domElement.toDataURL('image/webp',.85);
-    }
-    this.worlds.forEach(world=>world.root.visible=world===this.current);this.scene.background.set(this.current.bg);this.stars.object.visible=true;this.atmosphere.mesh.visible=true;this.lightfield.root.visible=true;this.trail.object.visible=true;this.photoLayer.visible=true;this.atmosphere.setWorld(this.current);this.lightfield.setWorld(this.current);this.resize();this.onPreviews(previews);
+    if(!this.disposed)this.composer.render();
   }
   resize() {
     const w=this.container.clientWidth,h=this.container.clientHeight;if(!w||!h)return;
@@ -76,15 +73,15 @@ export class Experience {
     this.homeDistance=this.immersive?(portrait?26:shortLandscape?21:18.5):portrait?(compact?45:36.5):shortLandscape?24:19.8;
     if(!this.wasSized||portrait!==this.wasPortrait||compact!==this.wasCompact||shortLandscape!==this.wasShortLandscape||this.immersive!==this.wasImmersive){this.camera.position.set(0,portrait?3.1:2.3,this.homeDistance);this.controls.target.set(0,0,0);this.controls.update();this.wasSized=true;this.wasPortrait=portrait;this.wasCompact=compact;this.wasShortLandscape=shortLandscape;this.wasImmersive=this.immersive;}
     const yOffset=this.immersive?0:portrait?(compact?h*.115:h*.055):h*.035;
-    this.camera.setViewOffset(w,h,portrait||this.immersive?0:-w*.155,yOffset,w,h);this.camera.updateProjectionMatrix();this.renderer.setPixelRatio(this.pixelRatio);this.renderer.setSize(w,h);this.composer.setPixelRatio(this.pixelRatio);this.composer.setSize(w,h);
+    this.camera.setViewOffset(w,h,portrait||this.immersive?0:-w*.155,yOffset,w,h);this.camera.updateProjectionMatrix();const budget=this.qualityMode==='high'?4500000:this.qualityMode==='low'?1500000:this.mobile?1300000:2800000,pixelRatio=cappedPixelRatio(w,h,this.pixelRatio,budget);this.renderer.setPixelRatio(pixelRatio);this.renderer.setSize(w,h);this.composer.setPixelRatio(pixelRatio);this.composer.setSize(w,h);this.placeFocusedPhoto();
   }
   setWorld(id) {
-    const next=this.worlds.find(world=>world.id===id);if(!next||next===this.current)return;
+    if(id===this.current.id||!WORLD_INFO.some(world=>world.id===id))return;if(this.focused||this.grabbed)this.clearFocus();const next=this.getWorld(id);
     this.resonance.reset();this.responseField.root.visible=false;
-    this.current.root.visible=false;this.current=next;this.current.root.visible=true;this.reveal=0;this.scene.background.set(next.bg);this.atmosphere.setWorld(next);this.lightfield.setWorld(next);this.bloom.strength=next.id==='flower'?.38:next.id==='tree'?.7:next.id==='ocean'?.7:next.id==='heart'?.4:.58;this.bloom.threshold=next.id==='flower'?1.2:1.05;this.targetScatter=0;this.controlFraction=next.id==='flower'?.55:0;this.targetOpen=1;this.targetYaw=0;this.targetPitch=0;this.grabbed=null;this.focused=null;this.lastPinch=false;this.onPhotoFocus(null);this.onWorld(next);this.lastUserInput=performance.now();
+    this.current.root.visible=false;this.current=next;this.current.root.visible=true;this.reveal=0;this.setScenePalette(next);this.targetScatter=0;this.controlFraction=next.id==='flower'?.55:0;this.targetOpen=1;this.targetYaw=0;this.targetPitch=0;this.grabbed=null;this.focused=null;this.lastPinch=false;this.onPhotoFocus(null);this.onWorld(next);this.lastUserInput=performance.now();
     this.camera.position.set(0,this.wasPortrait?3.1:2.3,this.homeDistance);this.controls.target.set(0,0,0);this.controls.update();
   }
-  nextWorld(){const index=this.worlds.indexOf(this.current);this.setWorld(this.worlds[(index+1)%this.worlds.length].id);}
+  nextWorld(){const index=WORLD_INFO.findIndex(world=>world.id===this.current.id);this.setWorld(WORLD_INFO[(index+1)%WORLD_INFO.length].id);}
   setDemo(active,{once=false,completed=false}={}){const changed=Boolean(this.demo)!==active;this.demo=active;this.demoOnce=active&&once;if(active){this.demoStart=this.elapsed;this.frozen=false;this.clearFocus();}if(changed)this.onDemo(active,{once,completed});}
   setReducedMotion(reduce){this.reducedMotion=reduce;this.controls.enableDamping=!reduce;if(reduce)this.setDemo(false);this.onReducedMotion(reduce);}
   async restoreGraphics(){
@@ -129,18 +126,24 @@ export class Experience {
   pickPhoto(x,y,grab=false) {
     if(!this.photoFaces.length)return null;
     this.pointer.set(x*2-1,1-y*2);this.raycaster.setFromCamera(this.pointer,this.camera);
-    const hit=this.raycaster.intersectObjects(this.photoFaces,false)[0];if(!hit)return null;
+    const hit=this.raycaster.intersectObjects(this.photoFaces.filter(face=>face.userData.photo.group.visible),false)[0];if(!hit)return null;
     const photo=hit.object.userData.photo;
-    if(grab){this.grabbed=photo;this.grabPosition=this.unproject(x,y,4);this.grabRoll=0;}else{this.focused=photo;this.onPhotoFocus(photo);}
+    if(grab){this.grabbed=photo;this.grabPosition=this.unproject(x,y,4);this.grabRoll=0;}else this.focusPhoto(photo);
     return photo;
   }
-  releaseGrab(){if(this.grabbed){this.focused=this.grabbed;this.onPhotoFocus(this.focused);}this.grabbed=null;}
-  clearFocus(){this.focused=null;this.grabbed=null;this.onPhotoFocus(null);}
-  photoScale(z,coverage){const distance=this.camera.position.distanceTo(this.controls.target),depth=distance-Math.min(z,distance*.4),height=Math.min(coverage,this.camera.aspect*.72/(1.16/1.4));return 2*Math.tan(THREE.MathUtils.degToRad(this.camera.fov/2))*depth*height/1.4;}
-  addPhoto({texture,name,id,thumbnail}) {
-    const group=new THREE.Group(),frame=new THREE.Mesh(new THREE.BoxGeometry(1.16,1.4,.055),new THREE.MeshBasicMaterial({color:'#d9d2c6'}));group.add(frame);
-    const face=new THREE.Mesh(new THREE.PlaneGeometry(1.02,1.02),new THREE.MeshBasicMaterial({map:texture,side:THREE.DoubleSide,toneMapped:false}));face.position.set(0,.09,.032);group.add(face);
-    const rng=randomFactory(this.photos.length*97+30),data={group,face,texture,name,id,thumbnail,chaos:new THREE.Vector3(...orbitalPosition(rng,this.photos.length,24,{radius:5.8,height:3.2,depth:2.3})),seed:rng()*100};face.userData.photo=data;
+  focusPhoto(photo){
+    this.focused=photo;this.grabbed=null;this.current.root.visible=false;this.photos.forEach(item=>item.group.visible=item===photo);this.onPhotoFocus(photo);this.placeFocusedPhoto();
+  }
+  placeFocusedPhoto(){const photo=this.focused;if(!photo)return;this.refreshPhotoViewport();this.camera.updateMatrixWorld(true);photo.group.position.copy(this.unproject(.5,this.photoViewport.y,8));photo.group.scale.setScalar(this.photoScale(8,this.photoViewport.coverage,photo));photo.group.quaternion.copy(this.camera.quaternion);}
+  refreshPhotoViewport(){if(!this.focused)return;const area=this.getPhotoArea();this.photoViewport=area?{y:(area.top+area.bottom)/2/this.height,coverage:Math.max(.1,(area.bottom-area.top)/this.height)}:{y:.53,coverage:.6};}
+  stepPhoto(direction){if(!this.photos.length)return;const index=this.photos.indexOf(this.focused);this.focusPhoto(this.photos[(index+direction+this.photos.length)%this.photos.length]);}
+  releaseGrab(){if(this.grabbed)this.focusPhoto(this.grabbed);this.grabbed=null;}
+  clearFocus(){this.focused=null;this.grabbed=null;this.current.root.visible=true;this.photos.forEach(photo=>{photo.group.visible=true;photo.group.scale.setScalar(this.photos.length>12?.8:1.05);});this.onPhotoFocus(null);}
+  photoScale(z,coverage,photo){const distance=this.camera.position.distanceTo(this.controls.target),depth=distance-Math.min(z,distance*.4);return fittedPhotoScale({fov:this.camera.fov,depth,aspect:this.camera.aspect,frameWidth:photo.frameWidth,frameHeight:photo.frameHeight,coverage});}
+  addPhoto({texture,name,id,thumbnail,sampleId=null,planeWidth=1.02,planeHeight=1.02,frameWidth=1.16,frameHeight=planeHeight+.22}) {
+    const group=new THREE.Group(),frame=new THREE.Mesh(new THREE.BoxGeometry(frameWidth,frameHeight,.055),new THREE.MeshBasicMaterial({color:'#e5dfd4'}));group.add(frame);
+    const face=new THREE.Mesh(new THREE.PlaneGeometry(planeWidth,planeHeight),new THREE.MeshBasicMaterial({map:texture,side:THREE.DoubleSide,toneMapped:false}));face.position.set(0,.04,.032);group.add(face);
+    const rng=randomFactory(this.photos.length*97+30),data={group,face,texture,name,id,thumbnail,sampleId,frameWidth,frameHeight,chaos:new THREE.Vector3(...orbitalPosition(rng,this.photos.length,24,{radius:5.8,height:3.2,depth:2.3})),seed:rng()*100};face.userData.photo=data;
     this.photoLayer.add(group);this.photos.push(data);this.photoFaces.push(face);group.position.copy(data.chaos);return data;
   }
   removePhoto(id){const data=this.photos.find(photo=>photo.id===id);if(!data)return;if(this.focused===data||this.grabbed===data)this.clearFocus();this.photoLayer.remove(data.group);data.group.traverse(o=>{o.geometry?.dispose();if(o.material)o.material.dispose();});data.texture.dispose();this.photos=this.photos.filter(p=>p!==data);this.photoFaces=this.photoFaces.filter(face=>face!==data.face);}
@@ -166,16 +169,18 @@ export class Experience {
     this.current.root.rotation.y=this.yaw+(!this.hasHands?Math.sin(this.elapsed*.11)*.09:0)+(1-this.reveal)*.45;this.current.root.rotation.x=this.pitch;
     this.controls.autoRotate=false;this.controls.update();
     const framing=this.wasPortrait?(PORTRAIT_WIDTH[this.current.id]||.62):1;
+    this.current.root.visible=!this.focused||Boolean(this.grabbed);
     updateWorld(this.current,this.elapsed,this.scatter,this.open,this.quality,framing,response);this.stars.update(this.elapsed,0);this.stars.quality(this.quality);this.stars.object.rotation.y=this.elapsed*.001;this.atmosphere.update(this.elapsed);this.lightfield.update(this.elapsed,this.scatter,this.quality,framing,this.camera,response);this.responseField.update(this.resonance.age,response,this.reducedMotion,this.camera);
     const fraction=this.current.id==='flower'?(this.open<.99?this.open*.55:.55+this.scatter/.94*.45):this.scatter/.94;this.onMotion({fraction,controlFraction:this.controlFraction,expanded:this.targetScatter>.5,world:this.current.id});
     this.trail.material.uniforms.uTime.value=this.trailClock||0;
     this.current.root.updateMatrixWorld(true);
     this.photos.forEach((photo,index)=>{
+      photo.group.visible=!this.focused||photo===this.focused||photo===this.grabbed;
       const target=this.current.photoTarget(index,this.photos.length),loose=photo.chaos.clone();if(this.wasPortrait)target.x*=.8;loose.x*=framing;target.lerp(loose,this.scatter*.9);this.current.root.localToWorld(target);target.y+=Math.sin(this.elapsed*.4+photo.seed)*.06;
       const isGrab=photo===this.grabbed,isFocused=photo===this.focused;
-      if(isGrab)target.copy(this.grabPosition);else if(isFocused)target.copy(this.unproject(.5,.48,8));
-      photo.group.position.lerp(target,1-Math.exp(-delta*(isGrab?7:2.8)));photo.group.lookAt(this.camera.position);
-      const scale=isGrab?this.photoScale(4,.37):isFocused?this.photoScale(8,.58):(this.photos.length>12?.8:1.05);photo.group.scale.lerp(new THREE.Vector3(scale,scale,scale),1-Math.exp(-delta*4));if(isGrab)photo.group.rotation.z=this.grabRoll||0;
+      if(isGrab)target.copy(this.grabPosition);else if(isFocused)target.copy(this.unproject(.5,this.photoViewport.y,8));
+      photo.group.position.lerp(target,1-Math.exp(-delta*(isGrab?7:2.8)));if(isFocused)photo.group.quaternion.copy(this.camera.quaternion);else photo.group.lookAt(this.camera.position);
+      const scale=isGrab?this.photoScale(4,.37,photo):isFocused?this.photoScale(8,this.photoViewport.coverage,photo):(this.photos.length>12?.8:1.05);photo.group.scale.lerp(new THREE.Vector3(scale,scale,scale),1-Math.exp(-delta*4));if(isGrab)photo.group.rotation.z=this.grabRoll||0;
     });
     this.composer.render();
     if(this.qualityMode==='auto'&&!this.performanceAdjusted&&this.renderSeconds>5){this.performanceFrames++;this.performanceTime+=delta;if(this.performanceTime>4){if(this.performanceFrames/this.performanceTime<27){this.performanceAdjusted=true;this.quality=Math.max(.32,this.quality*.7);this.pixelRatio=Math.max(.85,this.pixelRatio*.8);this.resize();this.composer.render();this.onQuality('adaptive');}this.performanceTime=0;this.performanceFrames=0;}}
