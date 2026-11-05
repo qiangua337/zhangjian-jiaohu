@@ -15,19 +15,20 @@ export function heartSurface(phi,theta,depth=1.8) {
 export function crystalHeart(geometry) {
   const root=new THREE.Group();
   const motion={time:{value:0},response:{value:0}};
-  const material=new THREE.MeshPhysicalMaterial({color:'#c85490',roughness:.28,metalness:.34,transmission:0,thickness:2.4,clearcoat:.8,clearcoatRoughness:.2,ior:1.48,iridescence:.35,iridescenceIOR:1.38,iridescenceThicknessRange:[180,430],envMapIntensity:1.15,emissive:'#4a1233',emissiveIntensity:.14,transparent:true,opacity:1});
+  const material=new THREE.MeshPhysicalMaterial({color:'#b64b7f',roughness:.22,metalness:.26,transmission:0,thickness:2.4,clearcoat:1,clearcoatRoughness:.14,ior:1.48,iridescence:.38,iridescenceIOR:1.38,iridescenceThicknessRange:[210,520],envMapIntensity:1.08,emissive:'#3b112b',emissiveIntensity:.1,transparent:true,opacity:1});
   material.onBeforeCompile=shader=>{
     shader.uniforms.uArtTime=motion.time;shader.uniforms.uResponse=motion.response;
     shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vStone;').replace('#include <begin_vertex>','#include <begin_vertex>\nvStone=position;');
     shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec3 vStone;uniform float uArtTime;uniform float uResponse;').replace('#include <color_fragment>',`#include <color_fragment>
       float gradient=smoothstep(-3.5,3.3,vStone.y);
-      float contour=vStone.y*10.+sin(vStone.x*2.4+vStone.z*.9)*1.3+sin(vStone.z*3.-uArtTime*.18)*.38;
-      float etch=pow(.5+.5*cos(contour),75.);
-      diffuseColor.rgb*=mix(vec3(.35,.16,.44),vec3(1.07,.86,.94),gradient);
-      diffuseColor.rgb+=vec3(.09,.035,.065)*etch;`).replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
-      totalEmissiveRadiance+=vec3(.4,.08,.23)*etch*(.24+uResponse*.9);`);
+      float contour=vStone.y*15.+sin(vStone.x*.85+vStone.z*1.4)*2.+sin(vStone.z*2.-uArtTime*.08)*.25;
+      float etch=pow(.5+.5*cos(contour),130.);
+      float silk=.5+.5*sin(vStone.x*.7+vStone.y*.5+vStone.z);
+      diffuseColor.rgb*=mix(vec3(.3,.18,.44),vec3(1.1,.87,.97),gradient);
+      diffuseColor.rgb+=vec3(.026,.015,.028)*etch+vec3(.026,.014,.025)*silk;`).replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
+      totalEmissiveRadiance+=vec3(.25,.06,.16)*etch*(.1+uResponse*.7);`);
   };
-  material.customProgramCacheKey=()=> 'palm-engraved-pearl-4';
+  material.customProgramCacheKey=()=> 'palm-silk-pearl-5';
   const core=new THREE.Mesh(geometry,material);root.add(core);
   const rimMaterial=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,uniforms:{uTime:{value:0},uOpacity:{value:1}},
     vertexShader:`varying vec3 vN;varying vec3 vP;varying vec3 vLocal;void main(){vLocal=position;vN=normalize(normalMatrix*normal);vec4 mv=modelViewMatrix*vec4(position*1.003,1.);vP=mv.xyz;gl_Position=projectionMatrix*mv;}`,

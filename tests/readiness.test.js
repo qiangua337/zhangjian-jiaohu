@@ -63,9 +63,13 @@ test('wrist roll crosses the angle boundary without a full-turn jump',()=>{
 
 test('sample album fetches only the bundled artwork and labels every file as a sample',async()=>{
   const urls=[],controller=new AbortController();const files=await sampleFiles({signal:controller.signal,fetcher:async(url,options)=>{urls.push(url);assert.equal(options.signal,controller.signal);return new Response(new Uint8Array([1,2,3]));}});
-  assert.deepEqual(urls,SAMPLE_ALBUM.map(sample=>sample.url));assert.deepEqual(files.map(file=>file.sampleId),SAMPLE_ALBUM.map(sample=>sample.id));assert.ok(files.every(file=>file.name.includes('示例')&&file.type==='image/png'));
+  assert.deepEqual(urls,SAMPLE_ALBUM.map(sample=>sample.url));assert.deepEqual(files.map(file=>file.sampleId),SAMPLE_ALBUM.map(sample=>sample.id));assert.ok(files.every(file=>file.name.includes('示例')&&file.type==='image/webp'));
 });
 
 test('a failed sample request fails the album instead of passing an error page to the photo decoder',async()=>{
   await assert.rejects(sampleFiles({fetcher:async()=>new Response('',{status:404})}),/未能加载/);
+});
+
+test('an HTML fallback with status 200 is rejected before the sample album imports partial files',async()=>{
+  await assert.rejects(sampleFiles({fetcher:async()=>new Response('<html>fallback</html>',{headers:{'Content-Type':'text/html; charset=utf-8'}})}),/未能加载/);
 });

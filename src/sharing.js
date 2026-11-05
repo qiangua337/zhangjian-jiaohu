@@ -1,4 +1,4 @@
-import {pngFile} from './share-state.js';
+import {imageFile} from './share-state.js';
 
 export function setupSharing({dialog,getCapture,toast}){
   let capture=null,file=null,downloadUrl=null;
@@ -13,13 +13,15 @@ export function setupSharing({dialog,getCapture,toast}){
   };
   const open=()=>{
     try{
-      capture=getCapture();report('');file=pngFile(capture.dataUrl,capture.filename);if(downloadUrl)URL.revokeObjectURL(downloadUrl);downloadUrl=URL.createObjectURL(file);const download=dialog.querySelector('#download-image');download.href=downloadUrl;download.download=capture.filename;preview.src=capture.dataUrl;preview.alt=capture.name+'的当前三维画面';linkField.value=capture.url;
+      capture=getCapture(dialog.querySelector('#export-format')?.value||'png');report('');file=imageFile(capture.dataUrl,capture.filename);if(downloadUrl)URL.revokeObjectURL(downloadUrl);downloadUrl=URL.createObjectURL(file);const download=dialog.querySelector('#download-image');download.href=downloadUrl;download.download=capture.filename;preview.src=capture.dataUrl;preview.alt=capture.name+'的当前三维画面';linkField.value=capture.url;
+      const meta=dialog.querySelector('#export-meta');if(meta)meta.textContent=(file.type==='image/webp'?'轻量 WebP':'无损 PNG')+' · '+(file.size<1024*1024?Math.ceil(file.size/1024)+' KB':(file.size/1024/1024).toFixed(1)+' MB');
       dialog.querySelector('#share-image').hidden=!canShareImage();dialog.querySelector('#share-website').hidden=!navigator.share;
-      dialog.querySelector('#share-photo-note').textContent=capture.photoCount?'图片会包含你加入的 '+capture.photoCount+' 张照片；链接仅包含系统作品和聚散状态。':'保存或分享当前三维画面，摄像头预览不会入图。';
-      dialog.showModal();
+      dialog.querySelector('#share-photo-note').textContent=capture.photoCount?'图片会包含你加入的 '+capture.photoCount+' 张照片；链接仅包含作品、聚散状态与光影风格。':'保存或分享当前三维画面，摄像头预览不会入图。';
+      if(!dialog.open)dialog.showModal();
     }catch{toast('画面还在准备或恢复中，稍后再保存这一刻。');}
   };
   dialog.querySelector('#download-image').addEventListener('click',()=>report('已开始保存图片；手机也可以长按预览图保存。'));
+  dialog.querySelector('#export-format')?.addEventListener('change',open);
   dialog.querySelector('#copy-link').addEventListener('click',copyLink);
   dialog.querySelector('#share-image').addEventListener('click',async()=>{
     if(!canShareImage())return;

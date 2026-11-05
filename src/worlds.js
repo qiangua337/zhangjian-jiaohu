@@ -5,6 +5,7 @@ import { heartSurface, crystalHeart, pineBranches, petalTexture, orbitLines } fr
 import { jellyModel as detailedJelly } from './jelly.js';
 import {heartCloud,galaxyArm,oceanCurrent} from './scene-layout.js';
 import {LazyWorldStore} from './world-store.js';
+import {createScenicDetails} from './scenic-details.js';
 
 const TAU = Math.PI * 2;
 export const WORLD_INFO = [
@@ -67,8 +68,8 @@ function atmosphere(radius, tint, intensity=.55) {
 }
 function nebula(root, tint, texture, position, scale, opacity=.1) {const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,color:tint,opacity,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending}));sprite.position.set(...position);sprite.scale.set(scale,scale,1);root.add(sprite);return sprite;}
 function baseWorld(info, texture) {
-  const root=new THREE.Group(),body=new THREE.Group();root.add(body);
-  return { ...info,root,body,fields:[],objects:[],animated:[],texture,phase:0,scale:1,photoTarget:(i,n)=>{const a=i/n*TAU;return new THREE.Vector3(Math.cos(a)*5.6,Math.sin(a)*3.1,Math.sin(a*2)*1.8);}, update:null };
+  const root=new THREE.Group(),body=new THREE.Group(),details=createScenicDetails(info.id);root.add(body,details.root);
+  return { ...info,root,body,details,fields:[],objects:[],animated:[],texture,phase:0,scale:1,photoTarget:(i,n)=>{const a=i/n*TAU;return new THREE.Vector3(Math.cos(a)*5.6,Math.sin(a)*3.1,Math.sin(a*2)*1.8);}, update:null };
 }
 function addField(world, field, parent=world.body) {world.fields.push(field);parent.add(field.object);return field;}
 function remember(world, mesh) {world.objects.push({mesh,position:mesh.position.clone(),scale:mesh.scale.clone(),rotation:mesh.rotation.clone()});return mesh;}
@@ -171,7 +172,7 @@ function createFlower(info,texture) {
   world.scale=1.1;
   const petals=[];
   for(let layer=0;layer<5;layer++){const count=10-layer;const geometry=petalGeometry(3.7-layer*.49,1.2-layer*.14,.4+layer*.23,.08+layer*.035);
-    const material=new THREE.MeshPhysicalMaterial({map:petalTexture(layer),color:'#ffffff',roughness:.32,metalness:.04,clearcoat:.25,clearcoatRoughness:.28,transmission:0,thickness:.13,ior:1.35,sheen:1,sheenColor:'#e8b5ed',sheenRoughness:.4,iridescence:.2,side:THREE.DoubleSide,envMapIntensity:.55});
+    const material=new THREE.MeshPhysicalMaterial({map:petalTexture(layer),color:'#ddc2dd',roughness:.32,metalness:.04,clearcoat:.25,clearcoatRoughness:.28,transmission:0,thickness:.13,ior:1.35,sheen:1,sheenColor:'#e8b5ed',sheenRoughness:.4,iridescence:.2,side:THREE.DoubleSide,envMapIntensity:.55});
     for(let i=0;i<count;i++){
     const petal=new THREE.Mesh(geometry,material);petal.rotation.y=i/count*TAU+layer*.46;petal.position.y=layer*.12;petal.userData={angle:petal.rotation.y,layer,baseY:petal.position.y};flower.add(petal);petals.push(petal);
   }}
@@ -215,6 +216,7 @@ export function makeStarfield() {
 }
 
 export function updateWorld(world,time,scatter,openness,quality,framing=1,response=0) {
+  world.details.update(time,scatter,quality);
   world.fields.forEach(field=>{field.update(time,scatter);field.quality(quality);});
   world.update?.(time,scatter,openness,quality,framing,response);
 }
