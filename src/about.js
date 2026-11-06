@@ -1,12 +1,12 @@
-export const FEEDBACK_TEMPLATE='掌间交互 3.0 体验反馈\n体验地址：https://zhangjian-jiaohu.pages.dev/\n\n设备与浏览器：\n\n遇到的问题：\n\n复现步骤：\n1. \n2. \n\n期待的效果：\n\n请不要附上私人照片、摄像头画面或账号信息。';
+export const FEEDBACK_TEMPLATE='掌间交互 3.1 体验反馈\n体验地址：https://zhangjian-jiaohu.pages.dev/\n\n设备与浏览器：\n\n遇到的问题：\n\n复现步骤：\n1. \n2. \n\n期待的效果：\n\n请不要附上私人照片、摄像头画面或账号信息。';
 
 export function aboutMarkup(){
   const feedback=new URL('https://github.com/qiangua337/zhangjian-jiaohu/issues/new');
-  feedback.searchParams.set('title','掌间交互体验反馈（3.0）');
+  feedback.searchParams.set('title','掌间交互体验反馈（3.1）');
   feedback.searchParams.set('body',FEEDBACK_TEMPLATE);
   return `<dialog id="about-dialog" class="dialog about-dialog" aria-labelledby="about-title">
     <button class="dialog-close" type="button" aria-label="关闭作品介绍">×</button>
-    <p class="dialog-eyebrow">掌间交互 · 公开体验版 3.0</p><h2 id="about-title">让每一次挥手，<br>都有回应。</h2>
+    <p class="dialog-eyebrow">掌间交互 · 公开体验版 3.1</p><h2 id="about-title">让每一次挥手，<br>都有回应。</h2>
     <p class="dialog-description">这是一件可以用触屏、鼠标和双手参与的三维互动作品。探索五个光影世界，选择喜欢的形态，也可以加入自己的照片。</p>
     <section class="about-section"><h3>先玩，再决定是否开启手势</h3><p>无需注册，也无需摄像头就能探索全部作品。可以先用示例相册试试效果，再选择自己的照片。</p><button id="about-guide" class="secondary-button" type="button">查看使用说明</button></section>
     <section class="about-section"><h3>照片与摄像头，只在你的设备中处理</h3><p>手势识别、摄像头画面和照片处理均在浏览器内完成，你的照片不会上传到服务器。刷新页面会清空本次照片。</p><p>保存的图片可能包含你的照片；分享的体验链接只保留作品、聚散状态与光影风格，不包含照片。</p></section>

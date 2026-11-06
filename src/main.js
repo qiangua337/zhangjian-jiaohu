@@ -1,8 +1,11 @@
 import './dialogs.css';
 import './exhibition.css';
+import './photo-viewer.css';
 import {exhibitionMarkup} from './exhibition-ui.js';
 import {LOOKS,readLook} from './presentation.js';
 import {PHOTO_ARRANGEMENTS} from './photo-arrangement.js';
+import {setupPhotoViewer} from './photo-viewer.js';
+import {gestureInstruction} from './gesture-instruction.js';
 import { WORLD_INFO } from './worlds.js';
 import { Experience } from './experience.js';
 import { GestureCamera } from './gestures.js';
@@ -50,7 +53,7 @@ app.innerHTML=exhibitionMarkup(WORLD_INFO,icon)+`
   <dialog id="guide-dialog" class="dialog guide-dialog" aria-labelledby="guide-title">
     <button class="dialog-close" type="button" aria-label="关闭使用说明">${icon('close')}</button>
     <p class="dialog-eyebrow">欢迎来到掌间交互</p><h2 id="guide-title">三步，把世界握在掌间。</h2><p class="dialog-description">先看一段演绎，再用触屏、鼠标或手势接管。无需摄像头也能完整体验。</p>
-    <div class="steps"><div><span>一</span><section><h3>先选一种玩法</h3><p>直接拖动、缩放即可探索。想用手势时，再开启摄像头。</p></section>${icon('camera')}</div><div><span>二</span><section><h3>选择喜欢的造型</h3><p>星环、爱心、圣诞树、花朵、水母，随时切换。</p></section>${icon('orbit')}</div><div><span>三</span><section><h3>加入你的照片 <small>可选</small></h3><p>可先用示例相册体验，再加入自己的照片。轻触或捏合照片可放大，并逐张欣赏。</p></section>${icon('photo')}</div></div>
+    <div class="steps"><div><span>一</span><section><h3>先选一种玩法</h3><p>直接拖动、缩放即可探索。想用手势时，再开启摄像头。</p></section>${icon('camera')}</div><div><span>二</span><section><h3>选择喜欢的造型</h3><p>星环、爱心、圣诞树、花朵、水母，随时切换。</p></section>${icon('orbit')}</div><div><span>三</span><section><h3>加入你的照片 <small>可选</small></h3><p>可先用示例相册体验，再加入自己的照片。放大后点选缩略图、左右滑动，或开启每五秒切换的自动播放。</p></section>${icon('photo')}</div></div>
     <div class="guide-gestures"><h3>你的手，可以这样玩</h3><div class="gesture-grid">${[['hand','张开手掌','展开、散开'],['fist','握紧拳头','收拢、聚合'],['refresh','移动手掌','转动作品'],['pinch','捏合指尖','抓取照片'],['point','伸出食指','画出星尘'],['victory','保持胜利手势','约一秒后切换造型'],['thumb','保持竖拇指','约一秒后定格、继续'],['zoom','双手拉开靠拢','放大、缩小']].map(([symbol,title,text])=>`<div>${icon(symbol)}<strong>${title}</strong><span>${text}</span></div>`).join('')}</div><p class="guide-footnote">切换与定格需要短暂保持手势。轻触作品可唤起光波，完整张开手掌也会触发回应。手机可用单指拖动、双指缩放；三个观赏阶段可以直接选择。手机点击「随心塑形」旁的操作按钮，可以展开、定格、复位或保存作品。作品目录中还可以开启自动巡展。</p></div>
     <div class="dialog-actions"><button class="primary-button" id="guide-camera" type="button">${icon('camera')}开启摄像头，开始体验</button><button class="secondary-button" id="guide-explore" type="button">先看看系统造型 ${icon('arrow')}</button></div>
     <p class="privacy-note">只需摄像头权限，不使用麦克风。照片和摄像头画面不会上传到服务器。</p>
@@ -62,7 +65,7 @@ app.innerHTML=exhibitionMarkup(WORLD_INFO,icon)+`
 `;
 
 const $=selector=>app.querySelector(selector);
-let experience,camera,toastTimer,audioContext,audioNodes=[],soundOn=false,cameraPreviewHidden=false,uploading=false,importSequence=0,sampleController=null,lastMotionValue=-1,lastMotionWorld='',lastMotionNote='',lastProgressLabel='',lastGuidance='',lastProgressPhase='';
+let experience,camera,photoViewer,toastTimer,audioContext,audioNodes=[],soundOn=false,cameraPreviewHidden=false,uploading=false,importSequence=0,sampleController=null,lastMotionValue=-1,lastMotionWorld='',lastMotionNote='',lastProgressLabel='',lastGuidance='',lastProgressPhase='';
 const guide=$('#guide-dialog'),photosDialog=$('#photos-dialog'),shareDialog=$('#share-dialog'),aboutDialog=$('#about-dialog'),catalogDialog=$('#catalog-dialog'),settingsDialog=$('#settings-dialog');
 const sharedScene=readSharedScene(location.search);
 const coarseInput=matchMedia('(pointer:coarse)').matches||innerWidth<760;
@@ -94,17 +97,13 @@ function updateAlbumButtons(){
   $('#sample-album').textContent=sampleController?'正在准备示例相册':complete?'示例相册已加入':'先用示例相册体验';
   $('#photos-view').disabled=!experience.photos.length;
 }
-function renderPhotoFocus(photo){
-  const wasFocused=app.dataset.photoFocus==='yes';$('#photo-focus').hidden=!photo;app.dataset.photoFocus=photo?'yes':'no';
-  if(photo){$('#photo-focus-count').textContent='照片 '+(experience.photos.indexOf(photo)+1)+' / '+experience.photos.length;$('#photo-focus-name').textContent=photo.name;$('#prev-photo').disabled=$('#next-photo').disabled=experience.photos.length<2;if(!wasFocused)requestAnimationFrame(()=>$('#close-photo').focus({preventScroll:true}));}
-  else if(wasFocused)requestAnimationFrame(()=>$('#photos-button').focus({preventScroll:true}));
-}
+function renderPhotoFocus(photo){photoViewer?.render(photo);}
 function renderPhotoList(){
   app.dataset.tools='no';$('#tools-toggle').setAttribute('aria-expanded','false');$('#tools-toggle').setAttribute('aria-label','展开场景操作');
   const container=$('#photo-grid');container.replaceChildren();
   experience.photos.forEach(photo=>{const item=document.createElement('div');item.className='photo-tile';const image=document.createElement('img');image.src=photo.thumbnail;image.alt=photo.name;const button=document.createElement('button');button.type='button';button.innerHTML=icon('close');button.setAttribute('aria-label','移除照片：'+photo.name);button.addEventListener('click',()=>{experience.removePhoto(photo.id);renderPhotoList();});item.append(image,button);container.append(item);});
   $('#photo-count').textContent=experience.photos.length;$('#photo-count').hidden=!experience.photos.length;$('#clear-photos').hidden=!experience.photos.length;$('#photo-arrangement').hidden=!experience.photos.length;
-  $('#world-caption-sub').textContent=experience.photos.length?'已加入 '+experience.photos.length+' 张珍藏照片':'轻触作品，让微光回应';updateAlbumButtons();if(experience.focused)renderPhotoFocus(experience.focused);
+  $('#world-caption-sub').textContent=experience.photos.length?'已加入 '+experience.photos.length+' 张珍藏照片':'轻触作品，让微光回应';updateAlbumButtons();photoViewer?.render(experience.focused);
 }
 async function importPhotos(files,{signal}={}){
   if(uploading)return;
@@ -161,10 +160,10 @@ const poseNames={palm:'张开手掌',fist:'握紧拳头',pinch:'捏合抓取',po
 function handleHands({hands,confirmation,guidance,time}){
   if(app.querySelector('dialog[open]')||!$('#recovery-panel').hidden){camera?.confirmation.reset();$('#hand-cursor').hidden=true;return;}
   experience.processHands(hands,time);
-  const hand=hands[0],cursor=$('#hand-cursor');cursor.hidden=!hand;
-  if(hand){const point=hand.pinch?hand.grab:hand.pose==='point'?hand.pointer:{x:hand.x,y:hand.y};cursor.style.left=point.x*100+'%';cursor.style.top=point.y*100+'%';cursor.classList.toggle('pinching',hand.pinch);$('#pose-label').textContent=hands.length>1?'双手缩放':poseNames[hand.pose];$('#camera-status').textContent='手势已连接';$('#gesture-tip-text').textContent=hands.length>1?'双手拉开或靠拢，控制场景大小':poseNames[hand.pose];}
+  const instruction=gestureInstruction(hands,{grabbing:Boolean(experience.grabbed),frozen:experience.frozen}),hand=hands[0],cursor=$('#hand-cursor');cursor.hidden=!hand;
+  if(hand){const point=hand.pinch?hand.grab:hand.pose==='point'?hand.pointer:{x:hand.x,y:hand.y};cursor.style.left=point.x*100+'%';cursor.style.top=point.y*100+'%';cursor.classList.toggle('pinching',hand.pinch);$('#pose-label').textContent=instruction?.title||poseNames[hand.pose];$('#camera-status').textContent=instruction?.title||'手势已连接';$('#gesture-tip-text').textContent=instruction?.hint||poseNames[hand.pose];}
   else if(camera.running&&guidance){$('#pose-label').textContent=guidance.title;$('#camera-status').textContent=guidance.title;$('#gesture-tip-text').textContent=guidance.hint;}
-  if(guidance){app.dataset.tracking=guidance.state;$('#camera-advice').textContent=guidance.hint;if(guidance.state==='tracking'&&lastGuidance!=='tracking'){$('#camera-panel').classList.remove('hand-found');requestAnimationFrame(()=>$('#camera-panel').classList.add('hand-found'));}if(lastGuidance!==guidance.state)$('#camera-live').textContent=guidance.title;lastGuidance=guidance.state;}
+  if(guidance){app.dataset.tracking=guidance.state;$('#camera-advice').textContent=instruction?.hint||guidance.hint;if(guidance.state==='tracking'&&lastGuidance!=='tracking'){$('#camera-panel').classList.remove('hand-found');requestAnimationFrame(()=>$('#camera-panel').classList.add('hand-found'));}if(lastGuidance!==guidance.state)$('#camera-live').textContent=guidance.title;lastGuidance=guidance.state;}
   const progress=$('#confirmation-progress');progress.hidden=!confirmation.progress;progress.style.setProperty('--progress',confirmation.progress);
   if(confirmation.action==='next'){experience.nextWorld();renderPhotoList();toast('已切换到'+experience.current.name);}
   if(confirmation.action==='freeze'){const frozen=experience.toggleFreeze();updateFreezeButton(frozen);toast(frozen?'场景已定格，保持竖拇指可继续。':'世界继续流动。');}
@@ -183,7 +182,7 @@ function renderMotion({fraction,controlFraction=fraction,expanded,world}){
 function sceneError(error){console.error(error);$('#loading').hidden=false;$('#loading').classList.remove('ready');$('#loading').innerHTML='<span class="loading-orbit">'+icon('orbit')+'</span><p>这个世界暂时未能开启</p><small>请使用支持三维渲染的新版浏览器，或在浏览器设置中开启图形加速。</small><button type="button" class="primary-button" id="reload-button">重新尝试</button>';$('#reload-button').onclick=()=>location.reload();}
 async function toggleCamera(){writeStorage('掌间交互已体验','是');experience?.setDemo(false);if(camera.running||camera.starting)camera.stop();else await camera.start();}
 const sharing=setupSharing({dialog:shareDialog,toast,getCapture(format){experience.setDemo(false);const dataUrl=experience.capture(format),extension=dataUrl.startsWith('data:image/webp')?'webp':'png';return{dataUrl,name:experience.current.name,filename:'掌间交互-'+experience.current.name+'.'+extension,photoCount:experience.focused?1:experience.photos.length,url:sceneShareUrl(experience.current.id,Math.round((experience.controlFraction||0)*100),experience.look)};}});
-function capture(){sharing.open();}
+function capture(){photoViewer?.stop();sharing.open();}
 
 function toggleAudio(){
   if(!audioContext){const AudioContext=window.AudioContext||window.webkitAudioContext;if(!AudioContext){toast('当前浏览器暂不支持氛围音。');return;}audioContext=new AudioContext();const gain=audioContext.createGain();gain.gain.value=0;gain.connect(audioContext.destination);[130.81,196,261.63,329.63].forEach((frequency,index)=>{const oscillator=audioContext.createOscillator();oscillator.type='sine';oscillator.frequency.value=frequency;oscillator.detune.value=index*2-3;const voice=audioContext.createGain();voice.gain.value=.017/(index+1);oscillator.connect(voice);voice.connect(gain);oscillator.start();audioNodes.push(oscillator);});audioNodes.gain=gain;}
@@ -192,10 +191,11 @@ function toggleAudio(){
 
 try{
   const requestedWorld=sharedScene.world||readStorage('掌间交互造型'),initialWorld=WORLD_INFO.some(world=>world.id===requestedWorld)?requestedWorld:'saturn';
-  experience=new Experience($('#scene'),{initialWorld,look:readLook(new URLSearchParams(location.search).get('look')||readStorage('掌间交互光影')),getStageArea:()=>$('#stage-window').getBoundingClientRect(),onReady(){requestAnimationFrame(()=>{$('#loading').classList.add('ready');setTimeout(()=>{$('#loading').hidden=true;},400);});if(sharedScene.spread!==null)experience.setMorph(sharedScene.spread/100,{immediate:true});else if(!readStorage('掌间交互已体验')&&!experience.reducedMotion&&!navigator.connection?.saveData)experience.setDemo(true,{once:true});},onWorld:world=>renderWorld(world),onPhotoFocus:renderPhotoFocus,getPhotoArea:()=>({top:$("#photo-focus").getBoundingClientRect().bottom+18,bottom:innerHeight-72}),onQuality:mode=>{if(mode==='adaptive')toast('已为当前设备自动优化画面，让互动更流畅。');},onMotion:renderMotion,motionMode:readStorage('掌间交互动态偏好')||'auto',onInteraction:()=>setManualMode(),onContext:updateContext,onReducedMotion(reduce){app.dataset.reduced=reduce?'yes':'no';$('#motion-button').setAttribute('aria-pressed',String(reduce));$('#motion-button').textContent=reduce?'动态已减少':'减少动态';},onDemo:renderDemo});
+  experience=new Experience($('#scene'),{initialWorld,look:readLook(new URLSearchParams(location.search).get('look')||readStorage('掌间交互光影')),getStageArea:()=>$('#stage-window').getBoundingClientRect(),onReady(){requestAnimationFrame(()=>{$('#loading').classList.add('ready');setTimeout(()=>{$('#loading').hidden=true;},400);});if(sharedScene.spread!==null)experience.setMorph(sharedScene.spread/100,{immediate:true});else if(!readStorage('掌间交互已体验')&&!experience.reducedMotion&&!navigator.connection?.saveData)experience.setDemo(true,{once:true});},onWorld:world=>renderWorld(world),onPhotoFocus:renderPhotoFocus,onPhotoDetail:state=>photoViewer?.detail(state),getPhotoArea:()=>({top:$('#photo-focus').getBoundingClientRect().bottom+18,bottom:$('#photo-strip').hidden?innerHeight-72:$('#photo-strip').getBoundingClientRect().top-16}),onQuality:mode=>{if(mode==='adaptive')toast('已为当前设备自动优化画面，让互动更流畅。');},onMotion:renderMotion,motionMode:readStorage('掌间交互动态偏好')||'auto',onInteraction:()=>setManualMode(),onContext:updateContext,onReducedMotion(reduce){app.dataset.reduced=reduce?'yes':'no';$('#motion-button').setAttribute('aria-pressed',String(reduce));$('#motion-button').textContent=reduce?'动态已减少':'减少动态';},onDemo:renderDemo});
   experience.ready.catch(sceneError);
   experience.onResponse=world=>{$('#stage-live').textContent=world.name+'已回应';};
   camera=new GestureCamera({video:$('#camera-video'),overlay:$('#camera-overlay'),onStatus:updateCameraStatus,onHands:handleHands,onError:showCameraError,onProgress:updateModelProgress});
+  photoViewer=setupPhotoViewer({root:app,getPhotos:()=>experience.photos,getFocused:()=>experience.focused,select:photo=>{if(camera.running||camera.starting)setManualMode();else experience.setDemo(false);experience.focusPhoto(photo);},close:()=>experience.clearFocus(),reduced:()=>experience.reducedMotion,canvas:experience.renderer.domElement,icon,onPlay:()=>setManualMode()});
   renderWorld(experience.current);renderLook(experience.look);
   const quality=readStorage('掌间交互画质');if(['auto','high','low'].includes(quality)){$('#quality-select').value=quality;experience.setQuality(quality);}
 }catch(error){sceneError(error);}
@@ -215,8 +215,6 @@ $('#sample-album').addEventListener('click',loadSamples);
 app.querySelectorAll('[data-arrangement]').forEach(button=>button.addEventListener('click',()=>{experience.setPhotoArrangement(button.dataset.arrangement);app.querySelectorAll('[data-arrangement]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));$('#arrangement-note').textContent=experience.photoArrangement==='wall'?'展墙模式会收起主体造型，让照片成为主角；聚散控制仍可使用。':'照片将以「'+PHOTO_ARRANGEMENTS[experience.photoArrangement]+'」排布，聚合时更容易看清。';}));
 photosDialog.addEventListener('close',()=>sampleController?.abort());
 $('#photos-view').addEventListener('click',()=>{photosDialog.close();setManualMode();if(experience.photos.length)experience.focusPhoto(experience.photos[0]);});
-$('#prev-photo').addEventListener('click',()=>{setManualMode();experience.stepPhoto(-1);});
-$('#next-photo').addEventListener('click',()=>{setManualMode();experience.stepPhoto(1);});
 $('#about-open').addEventListener('click',()=>{experience?.setDemo(false);aboutDialog.showModal();});
 $('#about-guide').addEventListener('click',()=>{aboutDialog.close();guide.showModal();});
 $('#copy-feedback').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(FEEDBACK_TEMPLATE);$('#feedback-status').textContent='已复制反馈模板，可填写后自行发送。';}catch{const field=$('#feedback-template');field.value=FEEDBACK_TEMPLATE;field.hidden=false;field.focus();field.select();$('#feedback-status').textContent='请复制已选中的模板，填写后自行发送。';}});
@@ -227,11 +225,11 @@ $('#spread-button').addEventListener('click',()=>{experience.setDemo(false);$('#
 $('#morph-range').addEventListener('input',event=>{setManualMode();experience.setMorph(Number(event.target.value)/100);event.target.style.setProperty('--fill',event.target.value+'%');});
 $('.stage-presets').addEventListener('click',event=>{const button=event.target.closest('[data-stage]');if(!button)return;setManualMode();experience.setMorph(Number(button.dataset.stage),{respond:true});});
 $('#focus-button').addEventListener('click',()=>{const immersive=app.dataset.immersive!=='yes';app.dataset.immersive=immersive?'yes':'no';experience.immersive=immersive;experience.resize();const label=immersive?'返回操作':'沉浸观看';$('#focus-button').setAttribute('aria-pressed',String(immersive));$('#focus-button').setAttribute('aria-label',label);$('#focus-button').title=label;$('#focus-button span').textContent=label;});
-$('#freeze-button').addEventListener('click',()=>{experience.setDemo(false);updateFreezeButton(experience.toggleFreeze());});$('#reset-button').addEventListener('click',()=>{experience.resetView();updateFreezeButton(false);$('#spread-button span').textContent='展开';});$('#save-button').addEventListener('click',capture);$('#close-photo').addEventListener('click',()=>experience.clearFocus());
+$('#freeze-button').addEventListener('click',()=>{experience.setDemo(false);updateFreezeButton(experience.toggleFreeze());});$('#reset-button').addEventListener('click',()=>{experience.resetView();updateFreezeButton(false);$('#spread-button span').textContent='展开';});$('#save-button').addEventListener('click',capture);
 $('#sound-button').addEventListener('click',toggleAudio);$('#quality-select').addEventListener('change',event=>{experience.setQuality(event.target.value);writeStorage('掌间交互画质',event.target.value);});
 $('#fullscreen-button').addEventListener('click',async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else if(document.documentElement.requestFullscreen)await document.documentElement.requestFullscreen();else $('#display-status').textContent='当前浏览器可通过“添加到主屏幕”获得更沉浸的体验。';}catch{$('#display-status').textContent='当前浏览器暂时无法进入全屏，可以使用沉浸观看。';}});
 $('.brand').addEventListener('click',event=>{event.preventDefault();experience?.resetView();updateFreezeButton(false);$('#spread-button span').textContent='展开';});
-document.addEventListener('keydown',event=>{if(event.code==='Space'&&!experience?.focused&&!app.querySelector('dialog[open]')&&$('#recovery-panel').hidden&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){event.preventDefault();$('#spread-button').click();}if(experience?.focused&&!app.querySelector('dialog[open]')&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){if(['ArrowLeft','ArrowRight'].includes(event.key)){event.preventDefault();setManualMode();experience.stepPhoto(event.key==='ArrowLeft'?-1:1);}if(event.key==='Escape')experience.clearFocus();}});
+document.addEventListener('keydown',event=>{if(event.code==='Space'&&!experience?.focused&&!app.querySelector('dialog[open]')&&$('#recovery-panel').hidden&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){event.preventDefault();$('#spread-button').click();}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&soundOn){audioNodes.gain.gain.setTargetAtTime(0,audioContext.currentTime,.2);}else if(soundOn)audioNodes.gain.gain.setTargetAtTime(1,audioContext.currentTime,.8);});
 window.addEventListener('pagehide',()=>{camera?.stop();});
 

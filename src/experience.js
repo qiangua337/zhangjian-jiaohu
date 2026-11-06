@@ -15,13 +15,15 @@ import {cappedPixelRatio} from './world-store.js';
 import {fittedPhotoScale} from './photo-layout.js';
 import {LOOKS,readLook,stageFrame,tourFrame} from './presentation.js';
 import {PHOTO_ARRANGEMENTS,photoPosition,photoArrangementScale} from './photo-arrangement.js';
+import {FocusResource} from './focus-resource.js';
+import {prepareFocusedTexture} from './photos.js';
 
 const PORTRAIT_SHAPES={heart:{normal:.79,compact:.78,offset:-.5},flower:{normal:.65,compact:.62,offset:-.22},ocean:{normal:.84,compact:.8,offset:.18}};
 const PORTRAIT_WIDTH={heart:.76,flower:.82,ocean:.7};
 
 export class Experience {
-  constructor(container, { onReady=()=>{}, onWorld=()=>{}, onPhotoFocus=()=>{}, onQuality=()=>{}, onMotion=()=>{}, onDemo=()=>{},onInteraction=()=>{},onContext=()=>{},onReducedMotion=()=>{},onResponse=()=>{},getPhotoArea=()=>null,getStageArea=()=>null,motionMode='auto',initialWorld='saturn',look='soft' }={}) {
-    Object.assign(this,{container,onReady,onWorld,onPhotoFocus,onQuality,onMotion,onDemo,onInteraction,onContext,onReducedMotion,onResponse,getPhotoArea,getStageArea});this.look=readLook(look);
+  constructor(container, { onReady=()=>{}, onWorld=()=>{}, onPhotoFocus=()=>{}, onPhotoDetail=()=>{}, onQuality=()=>{}, onMotion=()=>{}, onDemo=()=>{},onInteraction=()=>{},onContext=()=>{},onReducedMotion=()=>{},onResponse=()=>{},getPhotoArea=()=>null,getStageArea=()=>null,motionMode='auto',initialWorld='saturn',look='soft' }={}) {
+    Object.assign(this,{container,onReady,onWorld,onPhotoFocus,onPhotoDetail,onQuality,onMotion,onDemo,onInteraction,onContext,onReducedMotion,onResponse,getPhotoArea,getStageArea});this.look=readLook(look);
     this.motionQuery=matchMedia('(prefers-reduced-motion: reduce)');this.motionOverridden=['reduce','full'].includes(motionMode);this.reducedMotion=this.motionOverridden?motionMode==='reduce':this.motionQuery.matches;
     this.motionHandler=()=>{if(!this.motionOverridden)this.setReducedMotion(this.motionQuery.matches);};this.motionQuery.addEventListener?.('change',this.motionHandler);
     this.scene=new THREE.Scene();this.scene.background=new THREE.Color('#060a13');
@@ -46,6 +48,7 @@ export class Experience {
     this.worldStore=createWorldStore();this.current=this.getWorld(initialWorld);this.current.root.visible=true;this.setScenePalette(this.current);
     this.stars=makeStarfield();this.scene.add(this.stars.object);
     this.scatter=0;this.targetScatter=0;this.controlFraction=this.current.id==='flower'?.55:0;this.open=1;this.targetOpen=1;this.yaw=0;this.pitch=0;this.targetYaw=0;this.targetPitch=0;this.elapsed=0;this.frozen=false;this.lastTime=performance.now();this.lastUserInput=0;this.hasHands=false;this.photoLayer=new THREE.Group();this.scene.add(this.photoLayer);this.photos=[];this.photoFaces=[];this.raycaster=new THREE.Raycaster();this.pointer=new THREE.Vector2();this.lastPinch=false;this.grabbed=null;this.focused=null;this.lastDoubleHandDistance=null;
+    this.photoQuality=new FocusResource({load:(photo,signal)=>prepareFocusedTexture(photo.source,signal),apply:(photo,texture)=>{photo.face.material.map=texture;},reset:photo=>{photo.face.material.map=photo.texture;},report:onPhotoDetail});
     this.makeTrail();
     this.resonance=new Resonance();this.responseField=createResponseField();this.scene.add(this.responseField.root);
     this.resizeObserver=new ResizeObserver(()=>this.resize());this.resizeObserver.observe(container);this.resize();
@@ -100,7 +103,7 @@ export class Experience {
   showResponse(x,y){if(x===undefined||y===undefined){const p=this.controls.target.clone().project(this.camera);x=(p.x+1)/2;y=(1-p.y)/2;}this.responseField.fire(this.unproject(x,y,1),this.current.color);this.onResponse(this.current);}
   toggleFreeze(){this.frozen=!this.frozen;return this.frozen;}
   setQuality(mode){this.qualityMode=mode;this.quality=mode==='high'?1:mode==='low'?.38:(this.mobile?.58:1);this.pixelRatio=Math.min(devicePixelRatio||1,mode==='high'?1.9:mode==='low'?1:(this.mobile?1.3:1.8));this.resize();this.onQuality(mode);}
-  resetView(){this.setDemo(false);this.controlFraction=this.current.id==='flower'?.55:0;this.targetScatter=0;this.targetOpen=1;this.targetYaw=0;this.targetPitch=0;this.frozen=false;this.grabbed=null;this.focused=null;this.onPhotoFocus(null);this.wasSized=false;this.resize();}
+  resetView(){this.setDemo(false);this.clearFocus();this.controlFraction=this.current.id==='flower'?.55:0;this.targetScatter=0;this.targetOpen=1;this.targetYaw=0;this.targetPitch=0;this.frozen=false;this.grabbed=null;this.focused=null;this.onPhotoFocus(null);this.wasSized=false;this.resize();}
   processHands(hands,time) {
     this.hasHands=hands.length>0;
     if(!hands.length){if(this.grabbed)this.releaseGrab();this.lastPinch=false;this.lastDoubleHandDistance=null;return;}
@@ -135,18 +138,18 @@ export class Experience {
     return photo;
   }
   focusPhoto(photo){
-    this.focused=photo;this.grabbed=null;this.current.root.visible=false;this.photos.forEach(item=>item.group.visible=item===photo);this.onPhotoFocus(photo);this.placeFocusedPhoto();
+    this.focused=photo;this.grabbed=null;this.controls.enabled=false;this.current.root.visible=false;this.photos.forEach(item=>item.group.visible=item===photo);this.onPhotoFocus(photo);this.placeFocusedPhoto();this.photoQuality.select(photo);
   }
   placeFocusedPhoto(){const photo=this.focused;if(!photo)return;this.refreshPhotoViewport();this.camera.updateMatrixWorld(true);photo.group.position.copy(this.unproject(.5,this.photoViewport.y,8));photo.group.scale.setScalar(this.photoScale(8,this.photoViewport.coverage,photo));photo.group.quaternion.copy(this.camera.quaternion);}
   refreshPhotoViewport(){if(!this.focused)return;const area=this.getPhotoArea();this.photoViewport=area?{y:(area.top+area.bottom)/2/this.height,coverage:Math.max(.1,(area.bottom-area.top)/this.height)}:{y:.53,coverage:.6};}
   stepPhoto(direction){if(!this.photos.length)return;const index=this.photos.indexOf(this.focused);this.focusPhoto(this.photos[(index+direction+this.photos.length)%this.photos.length]);}
   releaseGrab(){if(this.grabbed)this.focusPhoto(this.grabbed);this.grabbed=null;}
-  clearFocus(){this.focused=null;this.grabbed=null;this.current.root.visible=true;this.photos.forEach(photo=>{photo.group.visible=true;photo.group.scale.setScalar(photoArrangementScale(this.photoArrangement,this.photos.length));});this.onPhotoFocus(null);}
+  clearFocus(){this.photoQuality.clear();this.controls.enabled=true;this.focused=null;this.grabbed=null;this.current.root.visible=true;this.photos.forEach(photo=>{photo.group.visible=true;photo.group.scale.setScalar(photoArrangementScale(this.photoArrangement,this.photos.length));});this.onPhotoFocus(null);}
   photoScale(z,coverage,photo){const distance=this.camera.position.distanceTo(this.controls.target),depth=distance-Math.min(z,distance*.4);return fittedPhotoScale({fov:this.camera.fov,depth,aspect:this.camera.aspect,frameWidth:photo.frameWidth,frameHeight:photo.frameHeight,coverage});}
-  addPhoto({texture,name,id,thumbnail,sampleId=null,planeWidth=1.02,planeHeight=1.02,frameWidth=1.16,frameHeight=planeHeight+.22}) {
+  addPhoto({texture,name,id,thumbnail,source=null,sampleId=null,planeWidth=1.02,planeHeight=1.02,frameWidth=1.16,frameHeight=planeHeight+.22}) {
     const group=new THREE.Group(),frame=new THREE.Mesh(new THREE.BoxGeometry(frameWidth,frameHeight,.055),new THREE.MeshBasicMaterial({color:'#e5dfd4'}));group.add(frame);
     const face=new THREE.Mesh(new THREE.PlaneGeometry(planeWidth,planeHeight),new THREE.MeshBasicMaterial({map:texture,side:THREE.DoubleSide,toneMapped:false}));face.position.set(0,.04,.032);group.add(face);
-    const rng=randomFactory(this.photos.length*97+30),data={group,face,texture,name,id,thumbnail,sampleId,frameWidth,frameHeight,chaos:new THREE.Vector3(...orbitalPosition(rng,this.photos.length,24,{radius:5.8,height:3.2,depth:2.3})),seed:rng()*100};face.userData.photo=data;
+    const rng=randomFactory(this.photos.length*97+30),data={group,face,texture,name,id,thumbnail,source,sampleId,frameWidth,frameHeight,chaos:new THREE.Vector3(...orbitalPosition(rng,this.photos.length,24,{radius:5.8,height:3.2,depth:2.3})),seed:rng()*100};face.userData.photo=data;
     this.photoLayer.add(group);this.photos.push(data);this.photoFaces.push(face);group.position.copy(data.chaos);return data;
   }
   removePhoto(id){const data=this.photos.find(photo=>photo.id===id);if(!data)return;if(this.focused===data||this.grabbed===data)this.clearFocus();this.photoLayer.remove(data.group);data.group.traverse(o=>{o.geometry?.dispose();if(o.material)o.material.dispose();});data.texture.dispose();this.photos=this.photos.filter(p=>p!==data);this.photoFaces=this.photoFaces.filter(face=>face!==data.face);}
@@ -191,5 +194,5 @@ export class Experience {
     if(this.qualityMode==='auto'&&!this.performanceAdjusted&&this.renderSeconds>5){this.performanceFrames++;this.performanceTime+=delta;if(this.performanceTime>4){if(this.performanceFrames/this.performanceTime<27){this.performanceAdjusted=true;this.quality=Math.max(.32,this.quality*.7);this.pixelRatio=Math.max(this.mobile?1:.85,this.pixelRatio*.8);this.resize();this.composer.render();this.onQuality('adaptive');}this.performanceTime=0;this.performanceFrames=0;}}
   }
   capture(format='png'){if(this.contextLost)throw new Error('画面正在恢复，请稍后保存');this.composer.render();return this.renderer.domElement.toDataURL(format==='webp'?'image/webp':'image/png',.9);}
-  dispose(){this.disposed=true;this.removeContextRecovery?.();this.motionQuery.removeEventListener?.('change',this.motionHandler);cancelAnimationFrame(this.frame);this.resizeObserver.disconnect();this.controls.dispose();this.scene.traverse(o=>{o.geometry?.dispose();if(o.material){const materials=Array.isArray(o.material)?o.material:[o.material];materials.forEach(material=>material.dispose());}});this.environmentTarget.dispose();this.composer.dispose();this.renderer.dispose();}
+  dispose(){this.disposed=true;this.photoQuality.clear();this.removeContextRecovery?.();this.motionQuery.removeEventListener?.('change',this.motionHandler);cancelAnimationFrame(this.frame);this.resizeObserver.disconnect();this.controls.dispose();this.scene.traverse(o=>{o.geometry?.dispose();if(o.material){const materials=Array.isArray(o.material)?o.material:[o.material];materials.forEach(material=>material.dispose());}});this.environmentTarget.dispose();this.composer.dispose();this.renderer.dispose();}
 }

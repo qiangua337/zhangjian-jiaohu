@@ -30,3 +30,6 @@
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}#app[data-reduced=yes] .world-enter,#app[data-reduced=yes] .loading-orbit svg,#app[data-reduced=yes] .loading-overlay>i{animation:none}#app[data-reduced=yes] .catalog-card:hover .catalog-art img{transform:none}
 @media(max-width:900px) and (orientation:portrait){#app[data-world=ocean] .world-intro h1{white-space:pre-line}}
 @media(max-height:740px) and (orientation:portrait){#app[data-world=ocean] #stage-window{top:29%}}
+.camera-preview canvas{transform:scaleX(-1)}
+@media(max-width:900px) and (orientation:portrait){#app[data-camera=on] .world-description,#app[data-camera=loading] .world-description{visibility:hidden}#app[data-camera=on] .gesture-tip,#app[data-camera=loading] .gesture-tip{top:214px;background:#10131bad;border:1px solid #ffffff15;border-radius:10px;padding:7px 9px}}
+@media(max-height:740px) and (orientation:portrait){#app[data-camera=on] .gesture-tip,#app[data-camera=loading] .gesture-tip{top:139px;padding:5px 7px}#app[data-world=ocean][data-camera=on] .gesture-tip,#app[data-world=ocean][data-camera=loading] .gesture-tip{top:170px}}

@@ -43,3 +43,9 @@ test('cancel while the video starts cannot restore a stale loading status',async
     assert.equal(stopped,1);assert.equal(loads,0);assert.equal(fixture.statuses.at(-1).state,'off');assert.equal(fixture.video.srcObject,null);
   }finally{fixture.restore();}
 });
+
+test('inference failure stops the camera stream and leaves a retryable error',()=>{
+  const fixture=cameraFixture(async()=>{}),previous={raf:globalThis.requestAnimationFrame,matchMedia:globalThis.matchMedia,warn:console.warn};let stopped=0;
+  globalThis.requestAnimationFrame=()=>1;globalThis.matchMedia=()=>({matches:false});console.warn=()=>{};
+  try{const camera=fixture.camera;camera.running=true;camera.lastInference=-Infinity;camera.stream={getTracks:()=>[{stop(){stopped++;}}]};fixture.video.currentTime=1;fixture.video.readyState=4;camera.model={detectForVideo(){throw new Error('GPU failed');}};camera.tick();assert.equal(camera.running,false);assert.equal(stopped,1);assert.equal(camera.frame,null);assert.equal(fixture.statuses.at(-1).state,'error');assert.match(fixture.errors[0],/摄像头已关闭/);assert.match(fixture.errors[0],/重试/);}finally{globalThis.requestAnimationFrame=previous.raf;globalThis.matchMedia=previous.matchMedia;console.warn=previous.warn;fixture.restore();}
+});

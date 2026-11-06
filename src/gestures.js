@@ -139,7 +139,7 @@ export class GestureCamera {
       this.onHands({ hands, confirmation, guidance, time: now });
       this.drawLandmarks(result.landmarks);
     } catch (error) {
-      if (!this.inferenceFailed) { this.inferenceFailed = true; console.warn('Hand inference failed', error); this.onError('手势识别暂时中断，关闭摄像头后可以重新开启。'); }
+      console.warn('Hand inference failed', error);this.stop(false);this.onStatus({state:'error',text:'手势识别已暂停'});this.onError('手势识别暂时中断，摄像头已关闭。点击“重试手势”即可重新开启。');
     }
   }
   sampleLight(now){
