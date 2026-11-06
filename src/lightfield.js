@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {createKineticRibbons} from './kinetic-ribbons.js';
 
 const TAU = Math.PI * 2;
 const vertex = `varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`;
@@ -6,6 +7,7 @@ const vertex = `varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix
 // All atmosphere is generated in the browser; no video or image background.
 export function createLightfield() {
   const root = new THREE.Group();
+  const ribbons=createKineticRibbons();root.add(ribbons.mesh);
   const color = new THREE.Color('#e1bb87'), secondary = new THREE.Color('#6d82c8');
   const uniforms = {uTime:{value:0},uColor:{value:color},uSecondary:{value:secondary},uEnergy:{value:0},uOcean:{value:0},uStyle:{value:0}};
   const haze = new THREE.Mesh(new THREE.PlaneGeometry(38,27),new THREE.ShaderMaterial({
@@ -48,9 +50,10 @@ export function createLightfield() {
 
   const targetColor=color.clone(),targetSecondary=secondary.clone();
   let worldId='saturn';
-  return {root,setWorld(world){worldId=world.id;targetColor.set(world.color);targetSecondary.set({saturn:'#687fd1',heart:'#9979e5',tree:'#448d7b',flower:'#9b85d4',ocean:'#a67cdb'}[world.id]);uniforms.uOcean.value=world.id==='ocean'?1:0;uniforms.uStyle.value=['saturn','heart','tree','flower','ocean'].indexOf(world.id);},
+  return {root,setWorld(world){worldId=world.id;ribbons.setWorld(world);targetColor.set(world.color);targetSecondary.set({saturn:'#687fd1',heart:'#9979e5',tree:'#448d7b',flower:'#9b85d4',ocean:'#a67cdb'}[world.id]);uniforms.uOcean.value=world.id==='ocean'?1:0;uniforms.uStyle.value=['saturn','heart','tree','flower','ocean'].indexOf(world.id);},
     update(time,scatter,quality,framing,camera,response=0){
       color.lerp(targetColor,.035);secondary.lerp(targetSecondary,.035);uniforms.uTime.value=time;uniforms.uEnergy.value=scatter+response*.5;
+      ribbons.update(time,scatter,quality,framing,response);
       haze.quaternion.copy(camera.quaternion);orbits.rotation.y=time*.025;orbits.rotation.z=-.12+Math.sin(time*.08)*.035;orbits.scale.set(framing,1,1);
       const visibility=worldId==='saturn'?.14:0;
       orbitMaterials.forEach((m,i)=>{m.color.copy(color);m.opacity=visibility*(1-i*.2)*(1+scatter*.4);});

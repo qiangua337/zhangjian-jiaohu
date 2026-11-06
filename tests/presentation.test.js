@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {stageFrame,tourFrame,readLook} from '../src/presentation.js';
+import {stageFrame,readLook} from '../src/presentation.js';
 import {photoPosition,photoArrangementScale} from '../src/photo-arrangement.js';
 import {sceneShareUrl,imageFile} from '../src/share-state.js';
 
@@ -14,17 +14,6 @@ test('stage framing keeps the artwork inside the reserved phone and desktop area
 
 test('framing falls back for an unavailable area and remains within camera zoom bounds',()=>{
   for(const world of ['saturn','heart','tree','flower','ocean','unknown']){const f=stageFrame({width:320,height:568,world,area:{width:0,height:0}});assert.ok(f.distance>=14&&f.distance<=52);assert.ok(Number.isFinite(f.offsetX)&&Number.isFinite(f.offsetY));}
-});
-
-test('a tour completes every morph before advancing and stops after all five works',()=>{
-  assert.equal(tourFrame(0).morph,0);assert.equal(tourFrame(2).morph,0);assert.equal(tourFrame(7).morph,1);assert.equal(tourFrame(10).morph,1);
-  for(let i=0;i<5;i++){assert.equal(tourFrame(i*14).step,i);assert.equal(tourFrame(i*14).morph,0);assert.equal(tourFrame(i*14).finished,false);}
-  assert.equal(tourFrame(69.99).step,4);assert.ok(tourFrame(69.99).morph<.001);assert.equal(tourFrame(70).finished,true);assert.equal(tourFrame(70).progress,1);
-});
-
-test('tour progress is monotonic and invalid clock values cannot produce invalid animation',()=>{
-  let progress=0;for(let t=0;t<=71;t+=.13){const f=tourFrame(t);assert.ok(f.morph>=0&&f.morph<=1);assert.ok(f.progress>=progress);progress=f.progress;}
-  assert.deepEqual(tourFrame(-5),tourFrame(0));assert.deepEqual(tourFrame(NaN),tourFrame(0));
 });
 
 test('shared light styles are allowlisted and never add local album information',()=>{

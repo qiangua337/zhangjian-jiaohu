@@ -5,12 +5,6 @@ export const LOOKS={
 };
 export const readLook=value=>Object.prototype.hasOwnProperty.call(LOOKS,value)?value:'soft';
 
-export function tourFrame(age,count=5,duration=14){
-  const elapsed=Math.max(0,Number.isFinite(age)?age:0),step=Math.floor(elapsed/duration),phase=elapsed%duration;
-  const ease=t=>{const v=Math.min(1,Math.max(0,t));return v*v*(3-2*v);};
-  return{step:step%count,finished:step>=count,progress:Math.min(1,elapsed/(count*duration)),morph:phase<2?0:phase<7?ease((phase-2)/5):phase<10?1:1-ease((phase-10)/(duration-10))};
-}
-
 const BOUNDS={saturn:[12,9],heart:[9.6,9],tree:[9,10],flower:[12,9.5],ocean:[8.8,8.5]};
 export function stageFrame({width,height,area,world='saturn',fov=42,immersive=false}){
   const safe=area&&area.width>0&&area.height>0?area:{left:width*.1,top:height*.12,width:width*.8,height:height*.7};
