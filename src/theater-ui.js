@@ -1,4 +1,5 @@
 import {THEATER_CHAPTERS,THEATER_LENGTH} from './theater.js';
+import {shouldHandleSceneSpace} from './keyboard.js';
 const timeLabel=value=>Math.floor(value/60).toString().padStart(2,'0')+':'+Math.floor(value%60).toString().padStart(2,'0');
 
 export function theaterMarkup(icon){
@@ -20,7 +21,13 @@ export function setupTheaterUI({root,experience,icon,capture}){
   $('#theater-exit').addEventListener('click',()=>experience.stopTheater());
   $('#theater-save').addEventListener('click',capture);
   chapters.forEach(button=>button.addEventListener('click',()=>experience.seekTheater(Number(button.dataset.chapter))));
-  document.addEventListener('keydown',event=>{if(!active||root.querySelector('dialog[open]'))return;if(event.key==='Escape'){experience.stopTheater();event.preventDefault();}if(event.code==='Space'&&!['BUTTON','INPUT','TEXTAREA','SELECT','A'].includes(document.activeElement.tagName)){event.preventDefault();experience.pauseTheater();}});
+  document.addEventListener('keydown',event=>{
+    if(!active||root.querySelector('dialog[open]'))return;
+    if(event.key==='Escape'){experience.stopTheater();event.preventDefault();}
+    if(shouldHandleSceneSpace(event,{activeElement:document.activeElement,canvas:experience.renderer.domElement})){
+      event.preventDefault();experience.pauseTheater();
+    }
+  });
   return{render(frame){
     const wasActive=active;active=frame.active;panel.hidden=!active;root.dataset.theater=active?'yes':'no';
     if(!active){index=-1;tick=-1;paused=null;if(wasActive){$('#theater-status').textContent='已返回自由探索';requestAnimationFrame(()=>$('#theater-start').focus({preventScroll:true}));}return;}

@@ -74,12 +74,26 @@ export class Experience {
     if(this.renderer.compileAsync)await this.renderer.compileAsync(this.scene,this.camera);
     if(!this.disposed)this.composer.render();
   }
+  setStudio(active) {
+    this.studio = active;
+    this.resize();
+  }
   resize() {
     const w=this.container.clientWidth,h=this.container.clientHeight;if(!w||!h)return;
     this.width=w;this.height=h;const portrait=w<=900&&h>w,shortLandscape=h<560&&w>h,compact=portrait&&h<730;
     this.camera.aspect=w/h;
-    const frame=stageFrame({width:w,height:h,area:this.getStageArea(),world:this.current.id,immersive:this.immersive||this.theater.active});this.homeDistance=frame.distance;
+    const previousDistance = this.homeDistance;
+    const studio = Boolean(this.studio);
+    const frame=stageFrame({width:w,height:h,area:this.getStageArea(),world:this.current.id,immersive:this.immersive||this.theater.active||studio});this.homeDistance=frame.distance;
     if(!this.wasSized||portrait!==this.wasPortrait||compact!==this.wasCompact||shortLandscape!==this.wasShortLandscape||this.immersive!==this.wasImmersive){this.camera.position.set(0,portrait?3.1:2.3,this.homeDistance);this.controls.target.set(0,0,0);this.controls.update();this.wasSized=true;this.wasPortrait=portrait;this.wasCompact=compact;this.wasShortLandscape=shortLandscape;this.wasImmersive=this.immersive;}
+    else if (studio !== this.wasStudio) {
+      const offset = this.camera.position.clone().sub(this.controls.target);
+      const distance = offset.length() * frame.distance / previousDistance;
+      offset.setLength(THREE.MathUtils.clamp(distance, this.controls.minDistance, this.controls.maxDistance));
+      this.camera.position.copy(this.controls.target).add(offset);
+      this.controls.update();
+    }
+    this.wasStudio = studio;
     this.camera.setViewOffset(w,h,frame.offsetX,frame.offsetY,w,h);this.camera.updateProjectionMatrix();const budget=this.qualityMode==='high'?4500000:this.qualityMode==='low'?1500000:this.mobile?1300000:2800000,pixelRatio=cappedPixelRatio(w,h,this.pixelRatio,budget);this.renderer.setPixelRatio(pixelRatio);this.renderer.setSize(w,h);this.composer.setPixelRatio(pixelRatio);this.composer.setSize(w,h);this.atmosphere.resize(w,h,frame);this.placeFocusedPhoto();
   }
   setWorld(id,{theater=false}={}) {

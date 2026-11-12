@@ -1,38 +1,176 @@
-import {imageFile} from './share-state.js';
+import './sharing.css';
+import { artworkPoster } from './art-poster.js';
+import { imageFile } from './share-state.js';
 
-export function setupSharing({dialog,getCapture,toast}){
-  let capture=null,file=null,downloadUrl=null;
-  const preview=dialog.querySelector('#share-preview'),linkField=dialog.querySelector('#share-link');
-  const feedback=document.createElement('p');feedback.className='share-feedback';feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');dialog.querySelector('.share-actions').after(feedback);
-  const report=message=>{feedback.textContent=message;};
-  const canShareImage=()=>{try{return Boolean(file&&navigator.canShare?.({files:[file]}));}catch{return false;}};
-  const copyLink=async()=>{
-    if(!capture)return;
-    try{await navigator.clipboard.writeText(capture.url);report('已复制体验链接，不包含你的照片。');}
-    catch{linkField.focus();linkField.select();report('请长按或按复制键，复制已选中的链接。');}
-  };
-  const open=()=>{
-    try{
-      capture=getCapture(dialog.querySelector('#export-format')?.value||'png');report('');file=imageFile(capture.dataUrl,capture.filename);if(downloadUrl)URL.revokeObjectURL(downloadUrl);downloadUrl=URL.createObjectURL(file);const download=dialog.querySelector('#download-image');download.href=downloadUrl;download.download=capture.filename;preview.src=capture.dataUrl;preview.alt=capture.name+'的当前三维画面';linkField.value=capture.url;
-      const meta=dialog.querySelector('#export-meta');if(meta)meta.textContent=(file.type==='image/webp'?'轻量 WebP':'无损 PNG')+' · '+(file.size<1024*1024?Math.ceil(file.size/1024)+' KB':(file.size/1024/1024).toFixed(1)+' MB');
-      dialog.querySelector('#share-image').hidden=!canShareImage();dialog.querySelector('#share-website').hidden=!navigator.share;
-      dialog.querySelector('#share-photo-note').textContent=capture.photoCount?'图片会包含你加入的 '+capture.photoCount+' 张照片；链接仅包含作品、聚散状态与光影风格。':'保存或分享当前三维画面，摄像头预览不会入图。';
-      if(!dialog.open)dialog.showModal();
-    }catch{toast('画面还在准备或恢复中，稍后再保存这一刻。');}
-  };
-  dialog.querySelector('#download-image').addEventListener('click',()=>report('已开始保存图片；手机也可以长按预览图保存。'));
-  dialog.querySelector('#export-format')?.addEventListener('change',open);
-  dialog.querySelector('#copy-link').addEventListener('click',copyLink);
-  dialog.querySelector('#share-image').addEventListener('click',async()=>{
-    if(!canShareImage())return;
-    try{await navigator.share({title:'掌间交互 · '+capture.name,files:[file]});}
-    catch(error){if(error.name!=='AbortError')report('暂时无法直接分享图片，可以先保存图片。');}
+function canvasBlob(canvas, format) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(blob => {
+      if (blob) resolve(blob);
+      else reject(new Error('图片编码失败'));
+    }, format === 'webp' ? 'image/webp' : 'image/png', .9);
   });
-  dialog.querySelector('#share-website').addEventListener('click',async()=>{
-    if(!capture)return;
-    try{await navigator.share({title:'掌间交互 · '+capture.name,text:'用手势或触屏探索三维光影作品。',url:capture.url});}
-    catch(error){if(error.name!=='AbortError')await copyLink();}
+}
+
+export function setupSharing({ dialog, getCapture, toast }) {
+  const $ = selector => dialog.querySelector(selector);
+  const preview = $('#share-preview');
+  const waiting = $('#share-waiting');
+  const linkField = $('#share-link');
+  const feedback = $('#share-feedback');
+  const formatField = $('#export-format');
+  const download = $('#download-image');
+  const shareImage = $('#share-image');
+  const shareWebsite = $('#share-website');
+  const layouts = [...dialog.querySelectorAll('[data-export-layout]')];
+  let shot, file, sourceUrl, outputUrl, decoded, poster;
+  let layout = 'original';
+  let sequence = 0;
+
+  function releaseOutput() {
+    preview.removeAttribute('src');
+    preview.hidden = true;
+    download.removeAttribute('href');
+    download.setAttribute('aria-disabled', 'true');
+    download.tabIndex = -1;
+    shareImage.hidden = true;
+    if (outputUrl && outputUrl !== sourceUrl) URL.revokeObjectURL(outputUrl);
+    outputUrl = null;
+    file = null;
+  }
+
+  function releaseShot() {
+    sequence++;
+    releaseOutput();
+    if (sourceUrl) URL.revokeObjectURL(sourceUrl);
+    shot = sourceUrl = decoded = poster = null;
+  }
+
+  function loadSource() {
+    if (!decoded) {
+      const image = new Image();
+      image.src = sourceUrl;
+      decoded = image.decode().then(() => image);
+    }
+    return decoded;
+  }
+
+  async function render() {
+    if (!shot || !dialog.open) return;
+    const current = ++sequence;
+    const snapshot = shot;
+    const format = formatField.value;
+    const isPoster = layout === 'poster';
+    dialog.dataset.exportLayout = layout;
+    layouts.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.exportLayout === layout)));
+    feedback.textContent = '';
+    waiting.textContent = isPoster ? '正在排版海报…' : '正在准备画面…';
+    waiting.hidden = false;
+    $('#export-meta').textContent = '';
+    $('#share-photo-note').textContent = snapshot.photoCount
+      ? '图片会包含当前场景中的照片。'
+      : isPoster ? '海报从当前舞台取景。' : '摄像头预览不会出现在图片中。';
+    releaseOutput();
+    try {
+      let blob = snapshot.original;
+      let width = snapshot.width;
+      let height = snapshot.height;
+      if (isPoster || format === 'webp') {
+        let canvas;
+        if (isPoster) {
+          poster ||= loadSource().then(image => artworkPoster(image, snapshot));
+          canvas = await poster;
+        } else {
+          const image = await loadSource();
+          canvas = document.createElement('canvas');
+          canvas.width = image.naturalWidth;
+          canvas.height = image.naturalHeight;
+          canvas.getContext('2d').drawImage(image, 0, 0);
+        }
+        if (current !== sequence || !dialog.open) return;
+        width = canvas.width;
+        height = canvas.height;
+        blob = await canvasBlob(canvas, format);
+      }
+      if (current !== sequence || !dialog.open) return;
+      const extension = blob.type === 'image/webp' ? 'webp' : 'png';
+      const suffix = isPoster ? '·展签海报' : '';
+      file = new File([blob], '掌间交互·' + snapshot.name + suffix + '.' + extension, { type: blob.type });
+      outputUrl = blob === snapshot.original ? sourceUrl : URL.createObjectURL(file);
+      preview.src = outputUrl;
+      preview.alt = snapshot.name + (isPoster ? '的展签海报' : '的三维画面');
+      preview.hidden = false;
+      waiting.hidden = true;
+      download.href = outputUrl;
+      download.download = file.name;
+      download.removeAttribute('aria-disabled');
+      download.removeAttribute('tabindex');
+      const size = file.size < 1024 * 1024 ? Math.ceil(file.size / 1024) + ' KB' : (file.size / 1024 / 1024).toFixed(1) + ' MB';
+      $('#export-meta').textContent = width + ' × ' + height + ' · ' + size;
+      shareImage.hidden = !canShareImage();
+      if (extension !== format) feedback.textContent = '此浏览器已用 PNG 生成图片。';
+    } catch {
+      if (current !== sequence || !dialog.open) return;
+      waiting.textContent = '图片生成失败，请重试或切换版式。';
+      if (isPoster) poster = null;
+      decoded = null;
+    }
+  }
+
+  function canShareImage() {
+    try { return Boolean(file && navigator.canShare?.({ files: [file] })); }
+    catch { return false; }
+  }
+
+  function open() {
+    if (dialog.open) return;
+    releaseShot();
+    try {
+      const snapshot = getCapture();
+      shot = { ...snapshot, original: imageFile(snapshot.dataUrl, snapshot.name + '.png') };
+      delete shot.dataUrl;
+      sourceUrl = URL.createObjectURL(shot.original);
+      linkField.value = shot.url;
+      shareWebsite.hidden = !navigator.share;
+      dialog.showModal();
+      void render();
+    } catch {
+      releaseShot();
+      toast('画面还在准备或恢复中，稍后再保存这一刻。');
+    }
+  }
+
+  async function copyLink() {
+    if (!shot) return;
+    try {
+      await navigator.clipboard.writeText(shot.url);
+      feedback.textContent = '已复制体验链接。';
+    } catch {
+      linkField.focus();
+      linkField.select();
+      feedback.textContent = '请长按或按复制键，复制已选中的链接。';
+    }
+  }
+
+  layouts.forEach(button => button.addEventListener('click', () => {
+    layout = button.dataset.exportLayout;
+    void render();
+  }));
+  formatField.addEventListener('change', render);
+  download.addEventListener('click', event => {
+    if (!file) event.preventDefault();
+    else feedback.textContent = '已开始保存。手机也可以长按预览图保存。';
   });
-  dialog.addEventListener('close',()=>{preview.removeAttribute('src');if(downloadUrl)URL.revokeObjectURL(downloadUrl);downloadUrl=null;dialog.querySelector('#download-image').removeAttribute('href');capture=null;file=null;});
-  return{open};
+  $('#copy-link').addEventListener('click', copyLink);
+  shareImage.addEventListener('click', async () => {
+    if (!canShareImage()) return;
+    try { await navigator.share({ title: '掌间交互 · ' + shot.name, files: [file] }); }
+    catch (error) { if (error.name !== 'AbortError') feedback.textContent = '暂时无法直接分享，可以先保存图片。'; }
+  });
+  shareWebsite.addEventListener('click', async () => {
+    if (!shot) return;
+    try { await navigator.share({ title: '掌间交互 · ' + shot.name, text: '用手势或触屏探索三维光影作品。', url: shot.url }); }
+    catch (error) { if (error.name !== 'AbortError') await copyLink(); }
+  });
+  dialog.addEventListener('close', () => { if (!dialog.open) releaseShot(); });
+  return { open };
 }

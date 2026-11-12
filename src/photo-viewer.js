@@ -19,7 +19,7 @@ export function setupPhotoViewer({root,getPhotos,getFocused,select,close,reduced
   }
   $('#prev-photo').addEventListener('click',()=>step(-1));$('#next-photo').addEventListener('click',()=>step(1));$('#close-photo').addEventListener('click',()=>{stop();close();});
   $('#photo-play').addEventListener('click',()=>{if(clock.playing)stop();else if(getPhotos().length>1){onPlay();clock.start(performance.now());renderPlayback();}});
-  document.addEventListener('keydown',event=>{if(!getFocused()||root.querySelector('dialog[open]')||['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))return;if(['ArrowLeft','ArrowRight'].includes(event.key)){event.preventDefault();step(event.key==='ArrowLeft'?-1:1);}if(event.key==='Escape'){stop();close();}});
+  document.addEventListener('keydown',event=>{if(!getFocused()||root.querySelector('dialog[open]')||['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))return;if(['ArrowLeft','ArrowRight'].includes(event.key)){event.preventDefault();step(event.key==='ArrowLeft'?-1:1);}if(event.key==='Escape'){event.preventDefault();stop();close();}});
   document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();});
   canvas.addEventListener('pointerdown',event=>{if(!getFocused())return;stop();if(event.pointerType!=='touch')return;if(pointer){pointer.pointers++;return;}pointer={id:event.pointerId,x:event.clientX,y:event.clientY,time:performance.now(),pointers:1};});
   canvas.addEventListener('pointerup',event=>{if(!pointer||event.pointerId!==pointer.id)return;const direction=swipeDirection({dx:event.clientX-pointer.x,dy:event.clientY-pointer.y,duration:performance.now()-pointer.time,pointers:pointer.pointers});pointer=null;if(direction&&getFocused())step(direction);});
