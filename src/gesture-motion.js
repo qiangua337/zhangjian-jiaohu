@@ -1,3 +1,11 @@
+export function inferenceInterval(cost, mobile, engaged) {
+  const base = engaged ? 32 : mobile ? 62 : 49;
+  // Sample the next video frame when there is headroom. A slower detector
+  // has to leave most of the main thread to rendering and touch input.
+  const budget = cost * (engaged ? 3.1 : 3.8);
+  return Math.max(base, Math.min(160, budget));
+}
+
 export class GestureContinuity {
   constructor() { this.reset(); }
 

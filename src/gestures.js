@@ -1,9 +1,10 @@
 import {downloadBinary} from './asset-loader.js';
 import {GestureFeedback} from './gesture-feedback.js';
 import {HandSignalFilter} from './hand-filter.js';
-import {GestureContinuity} from './gesture-motion.js';
+import {GestureContinuity,inferenceInterval} from './gesture-motion.js';
 
 const clamp = (value, low = 0, high = 1) => Math.min(high, Math.max(low, value));
+const handConnections = [[0,1,2,3,4],[0,5,6,7,8],[5,9,10,11,12],[9,13,14,15,16],[13,17,18,19,20],[0,17],[5,17]];
 
 export function measureHand(points, aspect = 1) {
   if (!Array.isArray(points) || points.length < 21 || points.some(p => !p || !Number.isFinite(p.x) || !Number.isFinite(p.y))) return null;
@@ -69,7 +70,8 @@ export class GestureCamera {
     Object.assign(this, { video, overlay, onStatus, onHands, onError, onProgress, drawPreview, mobile });
     this.feedback=new GestureFeedback();this.filter=new HandSignalFilter();this.continuity=new GestureContinuity();this.luminance=null;
     this.running = false; this.starting = false; this.sequence = 0; this.stream = null;
-    this.frame = null; this.model = null; this.lastVideoTime = -1; this.lastInference = -Infinity; this.inferenceCost = 0;
+    this.frame = null; this.model = null; this.lastVideoTime = -1; this.lastInference = -Infinity; this.inferenceCost = 0; this.lastHandAt = -Infinity;
+    this.overlayContext = overlay.getContext('2d');
     this.videoClock = typeof video.requestVideoFrameCallback === 'function' && typeof video.cancelVideoFrameCallback === 'function';
     this.confirmation = new PoseConfirmation();
     this.handleVisibility = () => { if (document.hidden && (this.running || this.starting)) this.stop(); };
@@ -122,7 +124,7 @@ export class GestureCamera {
       await this.loadModel(controller.signal,progress=>{if(sequence===this.sequence)this.onProgress(progress);});
       if (sequence !== this.sequence) return;
       this.running = true; this.starting = false;
-      this.lastVideoTime = -1;this.lastInference=-Infinity;this.inferenceCost=0;this.feedback.reset(performance.now());this.filter.reset();this.continuity.reset();this.luminance=null;this.lastLightSample=0;
+      this.lastVideoTime = -1;this.lastInference=-Infinity;this.lastHandAt=-Infinity;this.inferenceCost=0;this.feedback.reset(performance.now());this.filter.reset();this.continuity.reset();this.luminance=null;this.lastLightSample=0;
       stream.getVideoTracks()[0]?.addEventListener('ended', () => { if (sequence === this.sequence && this.running) this.stop(); }, { once: true });
       this.onStatus({ state: 'ready', text: '举起一只手，让世界回应你' });
       this.tick();
@@ -145,20 +147,23 @@ export class GestureCamera {
     const sequence = this.sequence;
     const next = time => { if (this.sequence === sequence) this.tick(time); };
     this.frame = this.videoClock ? this.video.requestVideoFrameCallback(next) : requestAnimationFrame(next);
-    const interval = Math.max(this.mobile ? 52 : 43, Math.min(150, this.inferenceCost * 3.3));
-    if (now - this.lastInference < interval || this.video.currentTime === this.lastVideoTime || this.video.readyState < 2) return;
+    const interval = inferenceInterval(this.inferenceCost, this.mobile, now - this.lastHandAt < 220);
+    if (now - this.lastInference + .8 < interval || this.video.currentTime === this.lastVideoTime || this.video.readyState < 2) return;
     this.lastInference = now; this.lastVideoTime = this.video.currentTime;
     try {
       const started = performance.now();
       const result = this.model.detectForVideo(this.video, now);
+      const inferenceMs = performance.now() - started;
       const aspect = (this.video.videoWidth / this.video.videoHeight) || 1;
       const detected = this.filter.update(result.landmarks.map(points => measureHand(points, aspect)).filter(Boolean), now);
+      if (detected.length) this.lastHandAt = now;
       const { hands, stale } = this.continuity.sample(detected, now);
       const confirmation = this.confirmation.update(hands.length === 1 ? hands[0].pose : null, now, stale);
       const guidance = this.feedback.update({time:now,hasHands:detected.length>0,luminance:detected.length ? null : this.sampleLight(now)});
       this.onHands({ hands, stale, confirmation, guidance, time: now });
       if (this.drawPreview()) this.drawLandmarks(result.landmarks);
       this.inferenceCost += (Math.min(180, performance.now() - started) - this.inferenceCost) * .28;
+      this.onMeasure?.({time:now,cost:inferenceMs,tracked:detected.length>0});
     } catch (error) {
       console.warn('Hand inference failed', error);this.stop(false);this.onStatus({state:'error',text:'手势识别已暂停'});this.onError('手势识别暂时中断，摄像头已关闭。点击“重试手势”即可重新开启。');
     }
@@ -176,7 +181,9 @@ export class GestureCamera {
   }
   drawLandmarks(hands) {
     const canvas = this.overlay;
-    const ctx = canvas.getContext('2d');
+    const ctx = this.overlayContext;
+    if (!ctx || (!hands.length && !this.overlayHasHands)) return;
+    this.overlayHasHands = hands.length > 0;
     const w = canvas.width, h = canvas.height;
     const videoWidth = this.video.videoWidth || w, videoHeight = this.video.videoHeight || h;
     const scale = Math.max(w / videoWidth, h / videoHeight);
@@ -185,11 +192,18 @@ export class GestureCamera {
     const y = p => p.y * drawH + (h - drawH) / 2;
     ctx.clearRect(0, 0, w, h);
     ctx.strokeStyle = '#e6d0ae'; ctx.fillStyle = '#fff2d6'; ctx.lineWidth = 1.6;
-    const lines = [[0,1,2,3,4],[0,5,6,7,8],[5,9,10,11,12],[9,13,14,15,16],[13,17,18,19,20],[0,17],[5,17]];
-    hands.forEach(points => {
-      lines.forEach(line => { ctx.beginPath(); line.forEach((i,j) => { const p=points[i]; if(j===0)ctx.moveTo(x(p),y(p));else ctx.lineTo(x(p),y(p)); }); ctx.stroke(); });
-      points.forEach(p => { ctx.beginPath(); ctx.arc(x(p),y(p),2,0,Math.PI*2); ctx.fill(); });
-    });
+    ctx.beginPath();
+    for (const points of hands) for (const line of handConnections) {
+      ctx.moveTo(x(points[line[0]]), y(points[line[0]]));
+      for (let i=1;i<line.length;i++) ctx.lineTo(x(points[line[i]]), y(points[line[i]]));
+    }
+    ctx.stroke();
+    ctx.beginPath();
+    for (const points of hands) for (const p of points) {
+      const px=x(p),py=y(p);
+      ctx.moveTo(px+2,py);ctx.arc(px,py,2,0,Math.PI*2);
+    }
+    ctx.fill();
   }
   stop(notify = true) {
     ++this.sequence;this.startController?.abort();this.startController=null; this.running = false; this.starting = false;
@@ -201,7 +215,7 @@ export class GestureCamera {
     this.stream?.getTracks().forEach(track => track.stop()); this.stream = null;
     this.video.pause(); this.video.srcObject = null;
     this.confirmation.reset();this.filter.reset();this.continuity.reset();this.feedback.reset(0);this.luminance=null;this.lightContext?.clearRect(0,0,16,12);
-    this.overlay.getContext('2d').clearRect(0, 0, this.overlay.width, this.overlay.height);
+    this.overlayContext?.clearRect(0, 0, this.overlay.width, this.overlay.height);this.overlayHasHands=false;
     this.onHands({ hands: [], stopped: true, confirmation: { progress: 0, action: null }, time: performance.now() });
     if (notify) this.onStatus({ state: 'off', text: '摄像头已关闭' });
   }

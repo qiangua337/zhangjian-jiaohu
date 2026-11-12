@@ -2,6 +2,31 @@ import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 const TAU=Math.PI*2;
 
+class TendrilPath extends THREE.Curve {
+  constructor(angle, index) {
+    super();
+    this.x = Math.cos(angle) * 1.95;
+    this.z = Math.sin(angle) * 1.95;
+    this.lengthY = 4 + index % 4 * .3;
+    this.phase = index;
+  }
+
+  getPoint(t, target = new THREE.Vector3()) {
+    const taper = 1 - t * .45;
+    return target.set(this.x * taper + Math.sin(t * 8 + this.phase) * t * .22, -t * this.lengthY, this.z * taper);
+  }
+
+  // The vertical span dominates each path. Even parameter steps are enough
+  // for these thin tendrils and avoid a separate arc-length lookup per tube.
+  getPointAt(t, target) { return this.getPoint(t, target); }
+
+  getTangentAt(t, target = new THREE.Vector3()) {
+    const phase = t * 8 + this.phase;
+    const wave = (Math.sin(phase) + 8 * t * Math.cos(phase)) * .22;
+    return target.set(-.45 * this.x + wave, -this.lengthY, -.45 * this.z).normalize();
+  }
+}
+
 const swimPhase=`
 float phase(){
   float t=uTime*1.15;
@@ -57,11 +82,13 @@ gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.);}`;
 
 export function jellyModel(scale,position,{detail=1}={}) {
   const root=new THREE.Group();root.position.set(...position);root.scale.setScalar(scale);
-  const profile=[];for(let i=0;i<=40;i++){const a=i/40*Math.PI/2;profile.push(new THREE.Vector2(Math.sin(a)*2.2,Math.cos(a)*1.75));}
+  const miniature=detail<.4;
+  const profileSteps=miniature?15:detail<1?28:40;
+  const profile=[];for(let i=0;i<=profileSteps;i++){const a=i/profileSteps*Math.PI/2;profile.push(new THREE.Vector2(Math.sin(a)*2.2,Math.cos(a)*1.75));}
   const material=new THREE.ShaderMaterial({vertexShader:bellVertex,fragmentShader:bellFragment,uniforms:{uTime:{value:0},uOpacity:{value:1}},transparent:true,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending});
-  const bell=new THREE.Mesh(new THREE.LatheGeometry(profile,detail<1?40:96),material);root.add(bell);
+  const bell=new THREE.Mesh(new THREE.LatheGeometry(profile,miniature?24:detail<1?40:96),material);root.add(bell);
   const rimPoints=[];for(let i=0;i<200;i++){const a=i/200*TAU,r=2.18+Math.sin(a*24)*.035;rimPoints.push(new THREE.Vector3(Math.cos(a)*r,Math.sin(a*24)*.025,Math.sin(a)*r));}
-  const ringGeometry=new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rimPoints,true),detail<1?102:190,.015,4,true);
+  const ringGeometry=new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rimPoints,true),miniature?68:detail<1?102:190,.015,4,true);
   const ringMaterial=new THREE.ShaderMaterial({
     transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
     uniforms:{uTime:{value:0},uOpacity:{value:1}},
@@ -73,10 +100,10 @@ export function jellyModel(scale,position,{detail=1}={}) {
   const tendrilMaterial=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,uniforms:{uTime:{value:0},uOpacity:{value:1}},vertexShader:tentacleVertex,
     fragmentShader:`uniform float uOpacity;varying float vT;varying float vRipple;
     void main(){vec3 c=mix(vec3(.43,.48,.84),vec3(.24,.7,.67),vT);gl_FragColor=vec4(c*1.27,(.4-vT*.27)*vRipple*uOpacity);}`});
-  const tubes=[];for(let i=0;i<(detail<1?10:24);i++){
-    const a=i/(detail<1?10:24)*TAU,r=1.95,points=[];
-    for(let j=0;j<=28;j++){const t=j/28;points.push(new THREE.Vector3(Math.cos(a)*r*(1-t*.45)+Math.sin(t*8+i)*t*.22,-t*(4+(i%4)*.3),Math.sin(a)*r*(1-t*.45)));}
-    tubes.push(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points),detail<1?21:46,.012,4,false));
+  const tubeCount=miniature?7:detail<1?10:24;
+  const tubes=[];for(let i=0;i<tubeCount;i++){
+    const path = new TendrilPath(i/tubeCount*TAU, i);
+    tubes.push(new THREE.TubeGeometry(path,miniature?14:detail<1?21:46,.012,4,false));
   }
   const tendrilGeometry=mergeGeometries(tubes);tubes.forEach(g=>g.dispose());root.add(new THREE.Mesh(tendrilGeometry,tendrilMaterial));
   const armMaterial=new THREE.ShaderMaterial({side:THREE.DoubleSide,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,uniforms:{uTime:{value:0},uOpacity:{value:1}},
@@ -93,17 +120,17 @@ export function jellyModel(scale,position,{detail=1}={}) {
       vec3 c=mix(vec3(.49,.33,.74),vec3(.24,.69,.66),vUv.y);
       gl_FragColor=vec4(c*1.25,(core*.37+width*.10)*frill*(1.-vUv.y*.74)*uOpacity);
     }`});
-  const armGeometries=[];
+  const armGeometries=[],armSteps=miniature?24:64;
   for(let arm=0;arm<4;arm++){
     const positions=[],uvs=[],indices=[],a=arm/4*TAU+.3;
-    for(let j=0;j<=64;j++){const t=j/64,angle=a+t*1.35,r=.48+t*.15,center=new THREE.Vector3(Math.cos(angle)*r,-t*4.5+.1,Math.sin(angle)*r),width=(.18+.08*Math.sin(t*35))*Math.pow(1-t*.82,.6);for(let side=0;side<2;side++){const u=side*2-1;positions.push(center.x+Math.cos(angle+Math.PI/2)*width*u,center.y+Math.sin(t*35)*u*.055,center.z+Math.sin(angle+Math.PI/2)*width*u);uvs.push(side,t);}}
-    for(let j=0;j<64;j++){const i=j*2;indices.push(i,i+2,i+1,i+1,i+2,i+3);}
+    for(let j=0;j<=armSteps;j++){const t=j/armSteps,angle=a+t*1.35,r=.48+t*.15,center=new THREE.Vector3(Math.cos(angle)*r,-t*4.5+.1,Math.sin(angle)*r),width=(.18+.08*Math.sin(t*35))*Math.pow(1-t*.82,.6);for(let side=0;side<2;side++){const u=side*2-1;positions.push(center.x+Math.cos(angle+Math.PI/2)*width*u,center.y+Math.sin(t*35)*u*.055,center.z+Math.sin(angle+Math.PI/2)*width*u);uvs.push(side,t);}}
+    for(let j=0;j<armSteps;j++){const i=j*2;indices.push(i,i+2,i+1,i+1,i+2,i+3);}
     const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geometry.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));geometry.setIndex(indices);geometry.computeVertexNormals();armGeometries.push(geometry);
   }
   const armGeometry=mergeGeometries(armGeometries);armGeometries.forEach(g=>g.dispose());root.add(new THREE.Mesh(armGeometry,armMaterial));
   const organs=[];for(let lobe=0;lobe<4;lobe++){
     const points=[];for(let i=0;i<80;i++){const a=i/80*TAU,phi=lobe/4*TAU;const x=Math.cos(a)*.27+.33,z=Math.sin(a)*.22;points.push(new THREE.Vector3(Math.cos(phi)*x-Math.sin(phi)*z,.62+Math.sin(a)*.025,Math.sin(phi)*x+Math.cos(phi)*z));}
-    organs.push(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points,true),80,.025,4,true));
+    organs.push(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points,true),miniature?28:detail<1?44:80,.025,4,true));
   }
   const organGeometry=mergeGeometries(organs);organs.forEach(g=>g.dispose());organGeometry.translate(0,-.62,0).rotateX(.8).translate(0,.62,0);const organMaterial=new THREE.MeshBasicMaterial({color:'#bf9ccb',transparent:true,opacity:.5,depthWrite:false,blending:THREE.AdditiveBlending});root.add(new THREE.Mesh(organGeometry,organMaterial));
   return {root,material,tendrilMaterial,armMaterial,ring,organMaterial,bellGeometry:bell.geometry,tendrilGeometry,armGeometry,organGeometry,baseY:position[1],scale,

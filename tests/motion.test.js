@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BLOOMED_FLOWER, FramePacer, handMorph, renderBudget, sculptingPose } from '../src/motion.js';
-import { GestureContinuity, TwoHandZoom } from '../src/gesture-motion.js';
+import { BLOOMED_FLOWER, FramePacer, RenderHealth, handMorph, handResponse, maxRenderTier, renderBudget, sculptingPose } from '../src/motion.js';
+import { GestureContinuity, TwoHandZoom, inferenceInterval } from '../src/gesture-motion.js';
 
 test('hand and slider use the same continuous flower pose, with a stable bloom before petal flight', () => {
   assert.equal(handMorph('flower', .12), 0);
@@ -46,6 +46,37 @@ test('automatic mobile camera use limits postprocessing, leaving explicit qualit
     renderBudget({mobile:true,camera:true,mode:'high',tier:2}),
     renderBudget({mobile:true,camera:false,mode:'high',tier:0})
   );
+});
+
+test('mobile can reduce rendering cost again when the 30 fps tier falls behind', () => {
+  const health = new RenderHealth();
+  const starting = renderBudget({mobile:true,camera:true,mode:'auto',tier:2});
+  const direction = Array.from({length:70},()=>health.observe(52,starting.rate,false)).find(n=>n!==0);
+  assert.equal(direction, 1);
+  const lower = renderBudget({mobile:true,camera:true,mode:'auto',tier:maxRenderTier(true)});
+  assert.equal(lower.rate, 30);
+  assert.ok(lower.ratio < starting.ratio && lower.bloom < starting.bloom);
+});
+
+test('a one-off compilation pause does not trigger a downgrade, and recovery requires sustained headroom', () => {
+  const health = new RenderHealth();
+  health.skipTransition();
+  const results = [health.observe(430,60,true)];
+  for (let i=0;i<1200;i++) results.push(health.observe(1000/60,60,true));
+  assert.ok(results.every(n=>n===0));
+  for (let i=0;i<600;i++) results.push(health.observe(1000/60,60,true));
+  assert.ok(results.includes(-1));
+  health.reset();
+  assert.ok(Array.from({length:1800},()=>health.observe(1000/60,60,false)).every(n=>n===0));
+});
+
+test('quick hand motion catches up faster without raising stationary inference load', () => {
+  const small = handResponse(.5,.51,7.5,6.2,.32);
+  assert.ok(small < 8);
+  assert.ok(handResponse(.1,.9,7.5,6.2,.32) > 13);
+  assert.equal(inferenceInterval(6,true,true),32);
+  assert.equal(inferenceInterval(6,true,false),62);
+  assert.ok(inferenceInterval(40,true,true)>100);
 });
 
 test('a stray second hand cannot take over, and a brief loss preserves the current mode', () => {

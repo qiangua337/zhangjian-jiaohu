@@ -1,0 +1,58 @@
+.check-dialog {
+  width: min(620px, calc(100% - 28px));
+}
+.check-dialog .dialog-description { max-width: 51ch; }
+.check-dialog h2 { padding-right: 26px; }
+.check-dialog .dialog-close { font-size: 22px; }
+.check-dialog .dialog-actions { flex-wrap: wrap; }
+.check-bar {
+  position: fixed;
+  top: calc(var(--studio-top, 91px) + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  z-index: 8;
+  gap: 7px;
+  min-height: 38px;
+  padding: 3px 5px 3px 11px;
+  border: 1px solid #ffffff26;
+  border-radius: 23px;
+  color: #e9e1ed;
+  background: #13131f;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.check-bar button {
+  min-height: 30px;
+  padding: 5px 8px;
+  border-radius: 18px;
+  color: var(--accent, #ead5bb);
+  background: #ffffff0c;
+}
+.check-dialog table { width: 100%; border-collapse: collapse; text-align: right; font-variant-numeric: tabular-nums; }
+.check-dialog th, .check-dialog td { padding: 9px 5px; border-bottom: 1px solid #ffffff19; font-size: 12px; font-weight: 400; }
+.check-dialog th:first-child { text-align: left; }
+.check-dialog thead { color: var(--accent, #ead5bb); }
+.check-note, .check-status { font-size: 12px; line-height: 1.55; color: #bfb4c7; }
+.check-status:empty { display: none; }
+.check-feedback { display: flex; gap: 10px; margin-top: 18px; }
+.check-feedback label { flex: 1; display: grid; gap: 6px; min-width: 0; color: #d9cfdf; font-size: 12px; }
+.check-feedback select, .check-report-text {
+  width: 100%;
+  min-height: 42px;
+  padding: 7px 9px;
+  border: 1px solid #ffffff26;
+  border-radius: 8px;
+  color: #eee6f1;
+  background: #1a1724;
+  font: inherit;
+}
+.check-report-text { min-height: 140px; margin-top: 8px; font-size: 12px; }
+
+@media (max-width: 420px) {
+  .check-dialog th, .check-dialog td { padding: 8px 2px; font-size: 10px; }
+  .check-bar { gap: 4px; padding-left: 8px; }
+  .check-bar button { padding-inline: 6px; }
+}

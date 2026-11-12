@@ -23,7 +23,9 @@ export class HandSignalFilter {
         const old=previous.hand,dt=Math.max(0,time-previous.time);
         const travel=Math.hypot(raw.x-old.x,raw.y-old.y);
         const tau=blend(88,30,Math.min(1,travel/.13));
-        const positionAlpha=1-Math.exp(-dt/tau),shapeAlpha=1-Math.exp(-dt/52);
+        const shapeTravel=Math.abs(raw.openness-old.openness);
+        const positionAlpha=1-Math.exp(-dt/tau);
+        const shapeAlpha=1-Math.exp(-dt/blend(54,27,Math.min(1,shapeTravel/.22)));
         const tipTravel=Math.hypot(raw.pointer.x-old.pointer.x,raw.pointer.y-old.pointer.y);
         const tipAlpha=1-Math.exp(-dt/blend(72,25,Math.min(1,tipTravel/.10)));
         hand.x=blend(old.x,raw.x,positionAlpha);hand.y=blend(old.y,raw.y,positionAlpha);

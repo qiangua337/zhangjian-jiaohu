@@ -23,6 +23,11 @@ export function handMorph(world, openness) {
     (1 - BLOOMED_FLOWER) * smooth(.76, .94, openness);
 }
 
+export function handResponse(current, target, base, boost, distance) {
+  const amount = clamp01(Math.abs(target - current) / distance);
+  return base + boost * amount;
+}
+
 export class FramePacer {
   constructor() { this.reset(); }
 
@@ -49,7 +54,49 @@ const phone = [
   { rate: 60, density: .64, ratio: 1.4, pixels: 1550000, bloom: .68 },
   { rate: 60, density: .52, ratio: 1.2, pixels: 1180000, bloom: .55 },
   { rate: 30, density: .40, ratio: 1, pixels: 880000, bloom: .45 },
+  { rate: 30, density: .32, ratio: .84, pixels: 665000, bloom: .38 },
 ];
+
+export function maxRenderTier(mobile) {
+  return mobile ? phone.length - 1 : 1;
+}
+
+export class RenderHealth {
+  constructor() { this.reset(); }
+
+  reset() {
+    this.clearWindow();
+    this.stableMs = 0;
+    this.ignore = 2;
+  }
+
+  clearWindow() { this.frames = this.ms = this.longFrames = 0; }
+
+  skipTransition() {
+    // A new sculpture can compile its shaders in one frame. The ongoing
+    // load still counts, but a single transition does not choose the tier.
+    this.ignore = 2;
+    this.stableMs = 0;
+  }
+
+  observe(elapsed, rate, allowRecovery) {
+    if (this.ignore) { this.ignore--; return 0; }
+    this.frames++;
+    this.ms += Math.min(400, elapsed);
+    const targetInterval = 1000 / rate;
+    if (elapsed > Math.max(42, targetInterval * 1.75)) this.longFrames++;
+    if (this.ms < 3200) return 0;
+
+    const observedRate = this.frames * 1000 / this.ms;
+    const longShare = this.longFrames / this.frames;
+    const stable = observedRate >= rate * .94 && longShare < .025;
+    this.stableMs = stable && allowRecovery ? this.stableMs + this.ms : 0;
+    this.clearWindow();
+    if (observedRate < rate * .81 || longShare > .15) return 1;
+    if (this.stableMs >= 25600) { this.stableMs = 0; return -1; }
+    return 0;
+  }
+}
 
 export function renderBudget({ mobile, camera, mode, tier }) {
   let budget;

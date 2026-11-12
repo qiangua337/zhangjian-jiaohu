@@ -18,7 +18,7 @@ import {PHOTO_ARRANGEMENTS,photoPosition,photoArrangementScale} from './photo-ar
 import {FocusResource} from './focus-resource.js';
 import {prepareFocusedTexture} from './photos.js';
 import {TheaterTimeline} from './theater.js';
-import {BLOOMED_FLOWER,FramePacer,handMorph,renderBudget,sculptingPose} from './motion.js';
+import {BLOOMED_FLOWER,FramePacer,RenderHealth,handMorph,handResponse,maxRenderTier,renderBudget,sculptingPose} from './motion.js';
 import {TwoHandZoom} from './gesture-motion.js';
 import {createStageLights} from './scene-lighting.js';
 
@@ -46,7 +46,7 @@ export class Experience {
     this.mobile=matchMedia('(pointer:coarse)').matches||innerWidth<760;
     this.qualityMode='auto';this.autoTier=0;this.cameraTier=0;this.cameraActive=false;
     this.budget=renderBudget({mobile:this.mobile,camera:false,mode:'auto',tier:0});this.quality=this.budget.density;
-    this.pacer=new FramePacer();this.resetPerformanceWindow();
+    this.pacer=new FramePacer();this.renderHealth=new RenderHealth();
     this.environmentTarget=studioEnvironment(this.renderer);this.environment=this.environmentTarget.texture;this.scene.environment=this.environment;
     this.stageLights=createStageLights(this.scene);
     this.atmosphere=createAtmosphere();this.scene.add(this.atmosphere.mesh);
@@ -79,7 +79,7 @@ export class Experience {
     this.removeContextRecovery=bindContextRecovery(this.renderer.domElement,{pause:()=>{this.contextLost=true;cancelAnimationFrame(this.frame);this.setDemo(false);this.onContext('lost');},rebuild:()=>this.restoreGraphics(),resume:()=>{this.contextLost=false;this.resumeRendering();},onState:(state)=>{if(state!=='lost')this.onContext(state);}});
     this.ready=this.prepareCurrentWorld().then(()=>{if(this.disposed)return;this.prepared=true;this.resumeRendering();this.onReducedMotion(this.reducedMotion);this.onReady();});
   }
-  resumeRendering(){if(this.disposed||this.contextLost||!this.prepared)return;cancelAnimationFrame(this.frame);this.pacer.reset();this.resetPerformanceWindow();this.frame=requestAnimationFrame(time=>this.render(time));}
+  resumeRendering(){if(this.disposed||this.contextLost||!this.prepared)return;cancelAnimationFrame(this.frame);this.pacer.reset();this.renderHealth.reset();this.frame=requestAnimationFrame(time=>this.render(time));}
   getWorld(id){const world=this.worldStore.get(id);if(!world.root.parent){world.root.visible=false;this.scene.add(world.root);}return world;}
   setScenePalette(world){
     this.scene.background.set(world.bg);this.atmosphere.setWorld(world);this.lightfield.setWorld(world);
@@ -116,7 +116,7 @@ export class Experience {
     }
     this.wasStudio = studio;
     this.camera.setViewOffset(w,h,frame.offsetX,frame.offsetY,w,h);this.camera.updateProjectionMatrix();
-    const tier=this.cameraActive?Math.max(this.autoTier,this.cameraTier):this.autoTier;
+    const tier=this.renderTier();
     const budget=renderBudget({mobile:this.mobile,camera:this.cameraActive,mode:this.qualityMode,tier});
     const pixelRatio=cappedPixelRatio(w,h,Math.min(devicePixelRatio||1,budget.ratio),budget.pixels);
     // Keep the visible canvas mounted at a stable size when auto quality
@@ -146,7 +146,7 @@ export class Experience {
     this.current.root.visible=false;this.current=next;this.current.root.visible=true;this.reveal=0;this.setScenePalette(next);
     this.setMorph(next.id==='flower'?BLOOMED_FLOWER:0,{immediate:true});
     this.yaw=this.pitch=this.targetYaw=this.targetPitch=0;this.clearHandControl(true);
-    this.onPhotoFocus(null);this.onWorld(next);this.resetPerformanceWindow();
+    this.onPhotoFocus(null);this.onWorld(next);this.renderHealth.skipTransition();
     this.wasSized=false;this.resize();
   }
   nextWorld(){const index=WORLD_INFO.findIndex(world=>world.id===this.current.id);this.setWorld(WORLD_INFO[(index+1)%WORLD_INFO.length].id);}
@@ -178,27 +178,25 @@ export class Experience {
   pulse(x,y){if(!this.prepared||this.contextLost||!this.resonance.trigger(performance.now()))return false;this.showResponse(x,y);return true;}
   showResponse(x,y){if(x===undefined||y===undefined){const p=this.controls.target.clone().project(this.camera);x=(p.x+1)/2;y=(1-p.y)/2;}this.responseField.fire(this.unproject(x,y,1),this.current.color);this.onResponse(this.current);}
   toggleFreeze(){this.frozen=!this.frozen;return this.frozen;}
-  resetPerformanceWindow(){this.performanceFrames=0;this.performanceMs=0;}
+  renderTier(){return this.cameraActive?Math.max(this.autoTier,this.cameraTier):this.autoTier;}
   setQuality(mode){
     this.qualityMode=mode;this.autoTier=this.cameraTier=0;this.reportedAdaptive=false;
-    this.resetPerformanceWindow();this.resize();this.onQuality(mode);
+    this.renderHealth.reset();this.resize();this.onQuality(mode);
   }
   setCameraActive(active){
     if(this.cameraActive===active)return;
-    this.cameraActive=active;this.cameraTier=0;this.resetPerformanceWindow();this.resize();
+    this.cameraActive=active;this.renderHealth.reset();this.resize();
   }
   adaptRendering(elapsed){
     if(this.qualityMode!=='auto')return;
+    const tier=this.renderTier();
     const field=this.cameraActive?'cameraTier':'autoTier';
-    const tier=Math.max(this.autoTier,this.cameraActive?this.cameraTier:0),limit=this.mobile?2:1;
-    if(tier>=limit)return;
-    this.performanceFrames++;this.performanceMs+=Math.min(120,elapsed);
-    if(this.performanceMs<3400)return;
-    const fps=this.performanceFrames*1000/this.performanceMs;
-    this.resetPerformanceWindow();
-    if(fps>=this.budget.rate*.79)return;
-    this[field]=tier+1;this.resize();
-    if(!this.reportedAdaptive){this.reportedAdaptive=true;this.onQuality('adaptive');}
+    const sameRate=!this.cameraActive&&tier>0&&renderBudget({mobile:this.mobile,camera:false,mode:'auto',tier:tier-1}).rate===this.budget.rate;
+    const adjustment=this.renderHealth.observe(elapsed,this.budget.rate,sameRate);
+    const next=THREE.MathUtils.clamp(tier+adjustment,0,maxRenderTier(this.mobile));
+    if(next===tier)return;
+    this[field]=next;this.renderHealth.reset();this.resize();
+    if(adjustment>0&&!this.reportedAdaptive){this.reportedAdaptive=true;this.onQuality('adaptive');}
   }
   resetView(){
     this.setDemo(false);this.clearFocus();this.clearHandControl(true);
@@ -307,10 +305,10 @@ export class Experience {
   render(time){
     if(this.disposed||this.contextLost)return;
     this.frame=requestAnimationFrame(t=>this.render(t));
-    if(document.hidden){if(this.theater.active&&!this.theater.paused)this.pauseTheater(true);this.pacer.reset();this.resetPerformanceWindow();return;}
-    const elapsed=this.pacer.take(time,this.budget.rate);
+    if(document.hidden){if(this.theater.active&&!this.theater.paused)this.pauseTheater(true);this.pacer.reset();this.renderHealth.reset();return;}
+    const rate=this.budget.rate,tier=this.renderTier();
+    const elapsed=this.pacer.take(time,rate);
     if(elapsed===null)return;
-    this.adaptRendering(elapsed);
     const delta=Math.min(elapsed/1000,.08);
     const theaterPaused=this.theater.active&&this.theater.paused;
     if(!this.frozen&&!theaterPaused){this.trailClock=(this.trailClock||0)+delta;if(!this.reducedMotion||this.demo||this.theater.active)this.elapsed+=delta;}
@@ -319,11 +317,13 @@ export class Experience {
     if(this.demo){const phase=(this.elapsed-this.demoStart)%18,amount=phase<3?0:phase<9?THREE.MathUtils.smoothstep(phase,3,9):phase<12?1:1-THREE.MathUtils.smoothstep(phase,12,18);this.setMorph(amount);this.targetYaw=Math.sin(this.elapsed*.17)*.22;this.targetPitch=Math.sin(this.elapsed*.11)*.05;}
     const motionDelta=theaterPaused?0:delta;
     const immediate=this.reducedMotion&&!this.theater.active&&!this.demo;
-    const nextMorph=immediate?this.controlFraction:THREE.MathUtils.damp(this.morphFraction,this.controlFraction,this.cameraActive?6.8:5.5,motionDelta);
+    const morphSpeed=this.hasHands?handResponse(this.morphFraction,this.controlFraction,7.5,6.2,.32):5.5;
+    const nextMorph=immediate?this.controlFraction:THREE.MathUtils.damp(this.morphFraction,this.controlFraction,morphSpeed,motionDelta);
     this.morphFraction=Math.abs(nextMorph-this.controlFraction)<.0005?this.controlFraction:nextMorph;
     this.updateSculptingPose();
-    this.yaw=immediate?this.targetYaw:THREE.MathUtils.damp(this.yaw,this.targetYaw,7,motionDelta);
-    this.pitch=immediate?this.targetPitch:THREE.MathUtils.damp(this.pitch,this.targetPitch,7,motionDelta);
+    const turnSpeed=this.hasHands?handResponse(this.yaw,this.targetYaw,8,7,.5):7;
+    this.yaw=immediate?this.targetYaw:THREE.MathUtils.damp(this.yaw,this.targetYaw,turnSpeed,motionDelta);
+    this.pitch=immediate?this.targetPitch:THREE.MathUtils.damp(this.pitch,this.targetPitch,turnSpeed,motionDelta);
     this.sway=immediate?0:THREE.MathUtils.damp(this.sway,this.hasHands?0:1,5,motionDelta);
     const response=this.resonance.step(delta);
     const portraitShape=this.wasPortrait&&!this.immersive?PORTRAIT_SHAPES[this.current.id]:null,spreadFit=portraitShape?THREE.MathUtils.lerp(1,this.wasCompact?portraitShape.compact:portraitShape.normal,THREE.MathUtils.smoothstep(this.scatter,.15,.85)):1;
@@ -339,7 +339,8 @@ export class Experience {
     const framing=this.wasPortrait?(PORTRAIT_WIDTH[this.current.id]||.62):1;
     this.current.root.visible=!this.focused||Boolean(this.grabbed);
     this.current.body.visible=this.theater.active||!(this.photoArrangement==='wall'&&this.photos.length);
-    updateWorld(this.current,this.elapsed,this.scatter,this.open,this.quality,framing,response);this.stars.update(this.elapsed,0);this.stars.quality(this.quality);this.stars.object.rotation.y=this.elapsed*.001;this.atmosphere.update(this.elapsed);this.lightfield.update(this.elapsed,this.scatter,this.quality,framing,this.camera,response,delta);this.responseField.update(this.resonance.age,response,this.reducedMotion,this.camera);
+    if(this.current.root.visible)updateWorld(this.current,this.elapsed,this.scatter,this.open,this.quality,framing,response);
+    this.stars.update(this.elapsed,0);this.stars.quality(this.quality);this.stars.object.rotation.y=this.elapsed*.001;this.atmosphere.update(this.elapsed);this.lightfield.update(this.elapsed,this.scatter,this.quality,framing,this.camera,response,delta);this.responseField.update(this.resonance.age,response,this.reducedMotion,this.camera);
     this.onMotion({fraction:this.morphFraction,controlFraction:this.controlFraction,expanded:this.isExpanded(),world:this.current.id});
     this.trail.material.uniforms.uTime.value=this.trailClock||0;
     this.current.root.updateMatrixWorld(true);
@@ -353,6 +354,8 @@ export class Experience {
       photo.group.scale.setScalar(THREE.MathUtils.damp(photo.group.scale.x,scale,6,delta));if(isGrab)photo.group.rotation.z=this.grabRoll||0;
     });
     this.composer.render();
+    this.onFrame?.({time,rate,tier,world:this.current.id});
+    this.adaptRendering(elapsed);
   }
   capture(format='png'){if(this.contextLost)throw new Error('画面正在恢复，请稍后保存');this.composer.render();return this.renderer.domElement.toDataURL(format==='webp'?'image/webp':'image/png',.9);}
   dispose(){this.disposed=true;this.photoQuality.clear();this.removeContextRecovery?.();this.motionQuery.removeEventListener?.('change',this.motionHandler);cancelAnimationFrame(this.frame);this.resizeObserver.disconnect();this.controls.dispose();this.scene.traverse(o=>{o.geometry?.dispose();if(o.material){const materials=Array.isArray(o.material)?o.material:[o.material];materials.forEach(material=>material.dispose());}});this.atmosphere.dispose();this.environmentTarget.dispose();this.bloom.dispose();this.composer.dispose();this.renderer.dispose();}
