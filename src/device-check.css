@@ -4,7 +4,8 @@
 .check-dialog .dialog-description { max-width: 51ch; }
 .check-dialog h2 { padding-right: 26px; }
 .check-dialog .dialog-close { font-size: 22px; }
-.check-dialog .dialog-actions { flex-wrap: wrap; }
+.check-dialog .dialog-actions { flex-wrap: wrap; margin-top: 12px; }
+.check-dialog .primary-button:hover { color: #15191e; }
 .check-bar {
   position: fixed;
   top: calc(var(--studio-top, 91px) + 2px);
