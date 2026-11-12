@@ -15,3 +15,11 @@ test('pointing and victory are distinct actions',()=>{assert.equal(measureHand(h
 test('mirrors hand position for a front camera',()=>{const left=hand().map(p=>({...p,x:p.x-.15}));const right=hand().map(p=>({...p,x:p.x+.15}));assert.ok(measureHand(left).x>measureHand(right).x);});
 test('confirmation fires once per held pose and rearms after release',()=>{const gate=new PoseConfirmation(750);assert.equal(gate.update('victory',100).action,null);assert.equal(gate.update('victory',900).action,'next');assert.equal(gate.update('victory',1800).action,null);gate.update('palm',1900);gate.update('victory',2000);assert.equal(gate.update('victory',2800).action,'next');});
 test('changing confirmation poses restarts the hold timer',()=>{const gate=new PoseConfirmation(750);gate.update('victory',0);assert.equal(gate.update('thumb',700).action,null);assert.equal(gate.update('thumb',1500).action,'freeze');});
+test('a brief camera dropout pauses the held gesture without completing it',()=>{
+  const gate=new PoseConfirmation(750);
+  gate.update('thumb',0);
+  assert.equal(gate.update('thumb',600).progress,.8);
+  assert.deepEqual(gate.update('thumb',660,true),{progress:.8,action:null});
+  assert.deepEqual(gate.update('thumb',760),{progress:.8,action:null});
+  assert.equal(gate.update('thumb',910).action,'freeze');
+});

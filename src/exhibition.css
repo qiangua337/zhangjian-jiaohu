@@ -34,6 +34,15 @@
 
 .world-description { color: #bcb2c3; }
 .deck-actions .explore-button { font-weight: 600; }
+.hand-cursor, .hand-cursor.pinching {
+  left: 0;
+  top: 0;
+  transform: translate3d(var(--hand-x, 0px), var(--hand-y, 0px), 0) translate(-50%, -50%) scale(var(--hand-scale, 1));
+  transition: transform 65ms linear, opacity 140ms ease;
+}
+.hand-cursor.pinching { --hand-scale: .73; }
+.hand-cursor.is-stale { opacity: .45; }
+#app[data-reduced=yes] .hand-cursor { transition: none; }
 #app:not([data-camera=on]):not([data-camera=loading]):not([data-camera-state=error]):not([data-demo=yes]) .deck-upper .gesture-tip { display: none; }
 
 @media (orientation: landscape) and (min-height: 561px), (min-width: 901px) and (orientation: portrait) {

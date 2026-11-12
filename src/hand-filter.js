@@ -18,9 +18,19 @@ export class HandSignalFilter {
       if(candidate!==wanted){candidate=wanted;since=time;}
       const immediate=!previous||pinch!==wasPinching||previous.hand.pose==='pinch';
       const pose=immediate||time-since>=80?wanted:previous.hand.pose;
-      const alpha=previous?1-Math.exp(-Math.max(0,time-previous.time)/45):1;
       const hand={...raw,pinch,pose};
-      if(previous){const old=previous.hand;hand.x=blend(old.x,raw.x,alpha);hand.y=blend(old.y,raw.y,alpha);hand.openness=blend(old.openness,raw.openness,alpha);hand.pointer=point(old.pointer,raw.pointer,alpha);hand.grab=point(old.grab,raw.grab,alpha);hand.roll=old.roll+Math.atan2(Math.sin(raw.roll-old.roll),Math.cos(raw.roll-old.roll))*alpha;}
+      if(previous){
+        const old=previous.hand,dt=Math.max(0,time-previous.time);
+        const travel=Math.hypot(raw.x-old.x,raw.y-old.y);
+        const tau=blend(88,30,Math.min(1,travel/.13));
+        const positionAlpha=1-Math.exp(-dt/tau),shapeAlpha=1-Math.exp(-dt/52);
+        const tipTravel=Math.hypot(raw.pointer.x-old.pointer.x,raw.pointer.y-old.pointer.y);
+        const tipAlpha=1-Math.exp(-dt/blend(72,25,Math.min(1,tipTravel/.10)));
+        hand.x=blend(old.x,raw.x,positionAlpha);hand.y=blend(old.y,raw.y,positionAlpha);
+        hand.openness=blend(old.openness,raw.openness,shapeAlpha);
+        hand.pointer=point(old.pointer,raw.pointer,tipAlpha);hand.grab=point(old.grab,raw.grab,tipAlpha);
+        hand.roll=old.roll+Math.atan2(Math.sin(raw.roll-old.roll),Math.cos(raw.roll-old.roll))*positionAlpha;
+      }
       next.push({hand,time,candidate,since});
     }
     this.previous=next.length?next:this.previous.filter(item=>time-item.time<220);

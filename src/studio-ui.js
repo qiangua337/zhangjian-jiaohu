@@ -15,7 +15,7 @@ export function studioMarkup(worlds, icon) {
       <h2 class="studio-panel-title">光影创作台</h2>
       <div class="studio-worlds" role="group" aria-label="创作台作品">
         ${worlds.map(world => `<button type="button" data-studio-world="${world.id}" aria-pressed="false">
-          <img src="/previews/${world.id}-v4.webp" alt="" decoding="async">
+          <img src="/previews/${world.id}-v42.webp" alt="" decoding="async">
           <span>${world.name}</span>
         </button>`).join('')}
       </div>

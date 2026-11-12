@@ -21,8 +21,9 @@ export function createSwarm({geometry,material,count,random,target,palette,radiu
     return item;
   });
   function update(time,progress,quality=1,visibility=progress,framing=1) {
-    const t=THREE.MathUtils.smoothstep(THREE.MathUtils.clamp(progress,0,1),0,1);
     mesh.visible=visibility>.015;
+    if(!mesh.visible){mesh.count=0;return;}
+    const t=THREE.MathUtils.smoothstep(THREE.MathUtils.clamp(progress,0,1),0,1);
     mesh.count=Math.min(count,Math.max(12,Math.round(count*Math.max(.3,quality))));
     for(let i=0;i<mesh.count;i++) {
       const item=items[i],emerge=THREE.MathUtils.smoothstep(visibility,item.delay,item.delay+.4);

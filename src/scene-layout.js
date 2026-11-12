@@ -1,11 +1,12 @@
 import {heartSurface} from './sculptures.js';
+import {BLOOMED_FLOWER} from './motion.js';
 
 const TAU=Math.PI*2;
 export const WORLD_STAGES={
   saturn:[['星环',0],['轨道',.45],['星系',1]],
   heart:[['凝聚',0],['心动',.42],['星团',1]],
   tree:[['成树',0],['流光',.5],['星雨',1]],
-  flower:[['花苞',0],['盛放',.55],['花雨',1]],
+  flower:[['花苞',0],['盛放',BLOOMED_FLOWER],['花雨',1]],
   ocean:[['静游',0],['潮汐',.48],['微光群',1]],
 };
 

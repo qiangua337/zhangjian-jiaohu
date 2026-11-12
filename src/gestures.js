@@ -1,12 +1,13 @@
 import {downloadBinary} from './asset-loader.js';
 import {GestureFeedback} from './gesture-feedback.js';
 import {HandSignalFilter} from './hand-filter.js';
+import {GestureContinuity} from './gesture-motion.js';
 
 const clamp = (value, low = 0, high = 1) => Math.min(high, Math.max(low, value));
-const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
-export function measureHand(points) {
+export function measureHand(points, aspect = 1) {
   if (!Array.isArray(points) || points.length < 21 || points.some(p => !p || !Number.isFinite(p.x) || !Number.isFinite(p.y))) return null;
+  const distance = (a, b) => Math.hypot((a.x - b.x) * aspect, a.y - b.y);
   const palm = Math.max(distance(points[5], points[17]), 0.025);
   const fingers = [[8, 6, 5], [12, 10, 9], [16, 14, 13], [20, 18, 17]].map(([tip, pip, mcp]) => {
     const wristRatio = distance(points[tip], points[0]) / Math.max(distance(points[mcp], points[0]), 0.025);
@@ -34,28 +35,42 @@ export function measureHand(points) {
     x: clamp(1 - center.x), y: clamp(center.y),
     pointer: { x: clamp(1 - points[8].x), y: clamp(points[8].y) },
     grab: { x: clamp(1 - (points[8].x + points[4].x) / 2), y: clamp((points[8].y + points[4].y) / 2) },
-    roll: Math.atan2(points[5].y - points[17].y, points[5].x - points[17].x),
+    roll: Math.atan2(points[5].y - points[17].y, (points[5].x - points[17].x) * aspect),
   };
 }
 
 export class PoseConfirmation {
-  constructor(duration = 750) { this.duration = duration; this.pose = null; this.since = 0; this.fired = false; }
-  update(pose, time) {
+  constructor(duration = 750) { this.duration = duration; this.reset(); }
+  update(pose, time, stale = false) {
+    if (stale) {
+      this.pausedSince ??= this.lastAt ?? time;
+      return { progress: this.progress, action: null };
+    }
     if (!['victory', 'thumb'].includes(pose)) { this.reset(); return { progress: 0, action: null }; }
-    if (pose !== this.pose) { this.pose = pose; this.since = time; this.fired = false; }
+    if (pose !== this.pose) {
+      this.pose = pose;
+      this.since = time;
+      this.fired = false;
+    } else if (this.pausedSince !== null) {
+      this.since += time - this.pausedSince;
+    }
+    this.lastAt = time;
+    this.pausedSince = null;
     const progress = clamp((time - this.since) / this.duration);
+    this.progress = progress;
     if (progress === 1 && !this.fired) { this.fired = true; return { progress, action: pose === 'victory' ? 'next' : 'freeze' }; }
     return { progress, action: null };
   }
-  reset() { this.pose = null; this.fired = false; this.since = 0; }
+  reset() { this.pose = null; this.fired = false; this.since = 0; this.lastAt = this.pausedSince = null; this.progress = 0; }
 }
 
 export class GestureCamera {
-  constructor({ video, overlay, onStatus, onHands, onError, onProgress=()=>{} }) {
-    Object.assign(this, { video, overlay, onStatus, onHands, onError, onProgress });
-    this.feedback=new GestureFeedback();this.filter=new HandSignalFilter();this.luminance=null;
+  constructor({ video, overlay, onStatus, onHands, onError, onProgress=()=>{}, drawPreview=()=>true, mobile=false }) {
+    Object.assign(this, { video, overlay, onStatus, onHands, onError, onProgress, drawPreview, mobile });
+    this.feedback=new GestureFeedback();this.filter=new HandSignalFilter();this.continuity=new GestureContinuity();this.luminance=null;
     this.running = false; this.starting = false; this.sequence = 0; this.stream = null;
-    this.frame = null; this.model = null; this.lastVideoTime = -1; this.lastInference = 0;
+    this.frame = null; this.model = null; this.lastVideoTime = -1; this.lastInference = -Infinity; this.inferenceCost = 0;
+    this.videoClock = typeof video.requestVideoFrameCallback === 'function' && typeof video.cancelVideoFrameCallback === 'function';
     this.confirmation = new PoseConfirmation();
     this.handleVisibility = () => { if (document.hidden && (this.running || this.starting)) this.stop(); };
     document.addEventListener('visibilitychange', this.handleVisibility);
@@ -95,7 +110,8 @@ export class GestureCamera {
         throw Object.assign(new Error('需要 HTTPS 或 localhost 才能开启摄像头'), { name: 'InsecureContext' });
       }
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24, max: 30 } }, audio: false,
+        video: { facingMode: 'user', width: { ideal: this.mobile ? 480 : 640 }, height: { ideal: this.mobile ? 360 : 480 }, frameRate: { ideal: 30, max: 30 } },
+        audio: false,
       });
       if (sequence !== this.sequence) { stream.getTracks().forEach(track => track.stop()); return; }
       this.stream = stream;
@@ -106,8 +122,8 @@ export class GestureCamera {
       await this.loadModel(controller.signal,progress=>{if(sequence===this.sequence)this.onProgress(progress);});
       if (sequence !== this.sequence) return;
       this.running = true; this.starting = false;
-      this.lastVideoTime = -1;this.feedback.reset(performance.now());this.filter.reset();this.luminance=null;this.lastLightSample=0;
-      stream.getVideoTracks()[0]?.addEventListener('ended', () => { if (this.running) this.stop(); }, { once: true });
+      this.lastVideoTime = -1;this.lastInference=-Infinity;this.inferenceCost=0;this.feedback.reset(performance.now());this.filter.reset();this.continuity.reset();this.luminance=null;this.lastLightSample=0;
+      stream.getVideoTracks()[0]?.addEventListener('ended', () => { if (sequence === this.sequence && this.running) this.stop(); }, { once: true });
       this.onStatus({ state: 'ready', text: '举起一只手，让世界回应你' });
       this.tick();
     } catch (error) {
@@ -124,20 +140,25 @@ export class GestureCamera {
       this.onError(errors[error.name] || '识别资源暂时未能准备好。可以重试或换用系统浏览器，也可以先直接探索。');
     } finally {if(this.startController===controller)this.startController=null;}
   }
-  tick() {
+  tick(now = performance.now()) {
     if (!this.running) return;
-    this.frame = requestAnimationFrame(() => this.tick());
-    const now = performance.now();
-    const interval = matchMedia('(pointer: coarse)').matches ? 90 : 66;
+    const sequence = this.sequence;
+    const next = time => { if (this.sequence === sequence) this.tick(time); };
+    this.frame = this.videoClock ? this.video.requestVideoFrameCallback(next) : requestAnimationFrame(next);
+    const interval = Math.max(this.mobile ? 52 : 43, Math.min(150, this.inferenceCost * 3.3));
     if (now - this.lastInference < interval || this.video.currentTime === this.lastVideoTime || this.video.readyState < 2) return;
     this.lastInference = now; this.lastVideoTime = this.video.currentTime;
     try {
+      const started = performance.now();
       const result = this.model.detectForVideo(this.video, now);
-      const hands = this.filter.update(result.landmarks.map(measureHand).filter(Boolean),now);
-      const confirmation = this.confirmation.update(hands.length===1?hands[0]?.pose:null, now);
-      const guidance=this.feedback.update({time:now,hasHands:hands.length>0,luminance:this.sampleLight(now)});
-      this.onHands({ hands, confirmation, guidance, time: now });
-      this.drawLandmarks(result.landmarks);
+      const aspect = (this.video.videoWidth / this.video.videoHeight) || 1;
+      const detected = this.filter.update(result.landmarks.map(points => measureHand(points, aspect)).filter(Boolean), now);
+      const { hands, stale } = this.continuity.sample(detected, now);
+      const confirmation = this.confirmation.update(hands.length === 1 ? hands[0].pose : null, now, stale);
+      const guidance = this.feedback.update({time:now,hasHands:detected.length>0,luminance:detected.length ? null : this.sampleLight(now)});
+      this.onHands({ hands, stale, confirmation, guidance, time: now });
+      if (this.drawPreview()) this.drawLandmarks(result.landmarks);
+      this.inferenceCost += (Math.min(180, performance.now() - started) - this.inferenceCost) * .28;
     } catch (error) {
       console.warn('Hand inference failed', error);this.stop(false);this.onStatus({state:'error',text:'手势识别已暂停'});this.onError('手势识别暂时中断，摄像头已关闭。点击“重试手势”即可重新开启。');
     }
@@ -157,22 +178,31 @@ export class GestureCamera {
     const canvas = this.overlay;
     const ctx = canvas.getContext('2d');
     const w = canvas.width, h = canvas.height;
+    const videoWidth = this.video.videoWidth || w, videoHeight = this.video.videoHeight || h;
+    const scale = Math.max(w / videoWidth, h / videoHeight);
+    const drawW = videoWidth * scale, drawH = videoHeight * scale;
+    const x = p => p.x * drawW + (w - drawW) / 2;
+    const y = p => p.y * drawH + (h - drawH) / 2;
     ctx.clearRect(0, 0, w, h);
     ctx.strokeStyle = '#e6d0ae'; ctx.fillStyle = '#fff2d6'; ctx.lineWidth = 1.6;
     const lines = [[0,1,2,3,4],[0,5,6,7,8],[5,9,10,11,12],[9,13,14,15,16],[13,17,18,19,20],[0,17],[5,17]];
     hands.forEach(points => {
-      lines.forEach(line => { ctx.beginPath(); line.forEach((i,j) => { const p=points[i]; if(j===0)ctx.moveTo(p.x*w,p.y*h);else ctx.lineTo(p.x*w,p.y*h); }); ctx.stroke(); });
-      points.forEach(p => { ctx.beginPath(); ctx.arc(p.x*w,p.y*h,2,0,Math.PI*2); ctx.fill(); });
+      lines.forEach(line => { ctx.beginPath(); line.forEach((i,j) => { const p=points[i]; if(j===0)ctx.moveTo(x(p),y(p));else ctx.lineTo(x(p),y(p)); }); ctx.stroke(); });
+      points.forEach(p => { ctx.beginPath(); ctx.arc(x(p),y(p),2,0,Math.PI*2); ctx.fill(); });
     });
   }
   stop(notify = true) {
     ++this.sequence;this.startController?.abort();this.startController=null; this.running = false; this.starting = false;
-    cancelAnimationFrame(this.frame); this.frame = null;
+    if (this.frame !== null) {
+      if (this.videoClock) this.video.cancelVideoFrameCallback(this.frame);
+      else cancelAnimationFrame(this.frame);
+    }
+    this.frame = null;
     this.stream?.getTracks().forEach(track => track.stop()); this.stream = null;
     this.video.pause(); this.video.srcObject = null;
-    this.confirmation.reset();this.filter.reset();this.feedback.reset(0);this.luminance=null;this.lightContext?.clearRect(0,0,16,12); this.inferenceFailed = false;
+    this.confirmation.reset();this.filter.reset();this.continuity.reset();this.feedback.reset(0);this.luminance=null;this.lightContext?.clearRect(0,0,16,12);
     this.overlay.getContext('2d').clearRect(0, 0, this.overlay.width, this.overlay.height);
-    this.onHands({ hands: [], confirmation: { progress: 0, action: null }, time: performance.now() });
+    this.onHands({ hands: [], stopped: true, confirmation: { progress: 0, action: null }, time: performance.now() });
     if (notify) this.onStatus({ state: 'off', text: '摄像头已关闭' });
   }
   dispose() { this.disposed=true;this.stop(); this.model?.close(); document.removeEventListener('visibilitychange', this.handleVisibility); }

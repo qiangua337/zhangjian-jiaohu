@@ -4,7 +4,14 @@
 
 **公开体验地址：https://zhangjian-jiaohu.pages.dev/**
 
-当前版本为 **4.1.0 光影创作台**。从展厅进入创作台，可以放大欣赏作品，调节形态和光影，使用摄像头手势并保存作品海报。
+当前版本为 **4.2.0 光影精修**。为五件作品分别调校灯光与材质，并改进手机上的形态过渡、双手缩放和手势识别。
+
+## 4.2 的变化
+
+- 星环有更清晰的分带与行星投影；爱心有珠光层次和更清楚的立体碎片；记忆之树有层叠枝叶、金线与彩色挂饰；花瓣增加纹理和高低变化；深海水母的伞盖、伞缘与触腕随游动一起变化。
+- 手势和滑杆共用形态进度。花朵可稳定停在盛放，继续舒展才散开；双手缩放从当前视角开始，小幅抖动不会推动镜头。
+- 短暂丢手时保留当前姿态。重新识别后接着操作；失去跟踪不会误打开被捏住的照片。食指画出的星尘在相邻识别帧间连成轨迹。
+- 手机自动画质根据渲染负载调节粒子量和辉光开销。摄像头优先随新视频帧推理，并根据推理耗时调节频率。作品目录、缩略图与分享封面都来自新版实际渲染。
 
 ## 4.1 的变化
 
@@ -72,7 +79,7 @@
 
 | 手势 | 效果 |
 | --- | --- |
-| 张开手掌 | 展开、散开；花朵先绽放，再飘散 |
+| 张开手掌 | 展开、散开；舒展到盛放后，可继续张开让花瓣飘散 |
 | 握紧拳头 | 聚合；花朵收拢成花苞 |
 | 左右上下移动手掌 | 转动场景 |
 | 拇指与食指捏合 | 抓住照片，或拖动场景 |
@@ -137,7 +144,7 @@ npx wrangler@4.151.1 pages deploy dist --project-name zhangjian-jiaohu --branch 
 - 照片仅保留在本次页面的内存中，刷新后清空。单张图片上限 25 MB。
 - 切到后台或离开页面会关闭摄像头；回到页面后可手动再次开启。
 - 需要支持 WebGL、WebAssembly、摄像头权限的现代浏览器。手机建议用系统浏览器打开；应用内浏览器若无法请求摄像头，可选择「在浏览器中打开」。
-- 手机自动降低实例数量与像素密度，并以约三十帧的渲染目标控制负担；可在「画面设置」中选择「流畅优先」。较低画质仍会保留完整的树冠与造型分布。
+- 手机自动画质会根据负载降低实例数量与辉光分辨率，设备有余量时以 60 帧为目标，负载较高时以 30 帧为目标；可在「画面设置」中选择「流畅优先」。较低画质仍会保留完整的树冠与造型分布。
 - 普通照片格式由浏览器解码。无法读取 HEIC 等格式时，可改用 JPEG 或 PNG。
 
 ## 实现
@@ -156,6 +163,6 @@ API 密钥、真实聊天记录、用户上传文件和本地凭证不应提交�
 
 ## 站点元信息
 
-包含自定义 404、robots.txt、sitemap.xml、canonical、Open Graph / Twitter 分享卡片和无 JavaScript 提示。`public/artworks/share-preview-v4.jpg` 是网站实际画面，不含用户照片或摄像头影像；旧分享封面继续保留。
+包含自定义 404、robots.txt、sitemap.xml、canonical、Open Graph / Twitter 分享卡片和无 JavaScript 提示。`public/artworks/share-preview-v42.jpg` 是星际引力的实际渲染画面，不含用户照片或摄像头影像。
 
 手势模型缓冲区加载依据 [MediaPipe 官方文档](https://developers.google.com/edge/mediapipe/solutions/vision/hand_landmarker/web_js)。画面恢复依据 [WebGL 恢复事件](https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/webglcontextrestored_event)，原生分享依据 [Web Share API](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/share)。
