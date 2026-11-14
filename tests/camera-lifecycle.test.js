@@ -47,7 +47,7 @@ test('cancel while the video starts cannot restore a stale loading status',async
 test('inference failure stops the camera stream and leaves a retryable error',()=>{
   const fixture=cameraFixture(async()=>{}),previous={raf:globalThis.requestAnimationFrame,matchMedia:globalThis.matchMedia,warn:console.warn};let stopped=0;
   globalThis.requestAnimationFrame=()=>1;globalThis.matchMedia=()=>({matches:false});console.warn=()=>{};
-  try{const camera=fixture.camera;camera.running=true;camera.lastInference=-Infinity;camera.stream={getTracks:()=>[{stop(){stopped++;}}]};fixture.video.currentTime=1;fixture.video.readyState=4;camera.model={detectForVideo(){throw new Error('GPU failed');}};camera.tick();assert.equal(camera.running,false);assert.equal(stopped,1);assert.equal(camera.frame,null);assert.equal(fixture.statuses.at(-1).state,'error');assert.match(fixture.errors[0],/摄像头已关闭/);assert.match(fixture.errors[0],/重试/);}finally{globalThis.requestAnimationFrame=previous.raf;globalThis.matchMedia=previous.matchMedia;console.warn=previous.warn;fixture.restore();}
+  try{const camera=fixture.camera;camera.running=true;camera.stream={getTracks:()=>[{stop(){stopped++;}}]};fixture.video.currentTime=1;fixture.video.readyState=4;camera.model={detectForVideo(){throw new Error('GPU failed');}};camera.tick();assert.equal(camera.running,false);assert.equal(stopped,1);assert.equal(camera.frame,null);assert.equal(fixture.statuses.at(-1).state,'error');assert.match(fixture.errors[0],/摄像头已关闭/);assert.match(fixture.errors[0],/重试/);}finally{globalThis.requestAnimationFrame=previous.raf;globalThis.matchMedia=previous.matchMedia;console.warn=previous.warn;fixture.restore();}
 });
 
 test('stopping cancels the pending video callback and stale callbacks cannot schedule another loop',()=>{
@@ -66,4 +66,75 @@ test('stopping cancels the pending video callback and stale callbacks cannot sch
     assert.equal(scheduled,1);
     assert.equal(fixture.hands.at(-1).stopped,true);
   }finally{fixture.restore();}
+});
+
+test('video callbacks deduplicate by frame timestamp even if the playback clock is stale or advances',()=>{
+  let callback;
+  const fixture=cameraFixture(async()=>{},{currentTime:1,readyState:4,
+    requestVideoFrameCallback(next){callback=next;return 1;},cancelVideoFrameCallback(){}
+  });
+  try {
+    const calls=[];
+    fixture.camera.running=true;
+    fixture.camera.lastLightSample=1000;
+    fixture.camera.model={detectForVideo(video,time){calls.push(time);return {landmarks:[]};}};
+    fixture.camera.queueFrame();
+    callback(1100,{mediaTime:1});
+    fixture.video.currentTime=1.1;
+    callback(1200,{mediaTime:1});
+    fixture.video.currentTime=1;
+    callback(1300,{mediaTime:1.2});
+    callback(1400,{mediaTime:1.3});
+    assert.deepEqual(calls,[1100,1300,1400]);
+    fixture.camera.stop();
+  } finally {fixture.restore();}
+});
+
+test('a slow worker skips intervening video frames and its result cannot arrive after stop',async()=>{
+  let callback, finish, requests=0, closed=0;
+  const fixture=cameraFixture(async()=>{},{readyState:4,
+    requestVideoFrameCallback(next){callback=next;return 1;},cancelVideoFrameCallback(){}
+  });
+  try {
+    const { camera, hands } = fixture;
+    camera.running=true;
+    camera.model={usesWorker:true,
+      infer(){requests++;return new Promise(resolve=>finish=resolve);},
+      close(){closed++;}
+    };
+    camera.queueFrame();
+    callback(100,{mediaTime:1});
+    callback(133,{mediaTime:2});
+    callback(166,{mediaTime:3});
+    assert.equal(requests,1);
+    camera.stop();
+    finish({landmarks:[],cost:55});
+    await Promise.resolve();
+    assert.equal(closed,1);
+    assert.equal(camera.model,null);
+    assert.equal(hands.length,1);
+    assert.equal(hands[0].stopped,true);
+  } finally {fixture.restore();}
+});
+
+test('a broken worker switches to the synchronous model without closing the camera',async()=>{
+  const fixture=cameraFixture(async()=>{});
+  try {
+    const { camera, statuses } = fixture;
+    const fallback={detectForVideo(){return {landmarks:[]};}};
+    let closed=0;
+    const worker={usesWorker:true,
+      async infer(){throw new Error('worker failed');},
+      close(){closed++;}
+    };
+    camera.running=true;
+    camera.model=worker;
+    camera.loadModel=async()=>{camera.model=fallback;};
+    await camera.inferInWorker(worker,100);
+    assert.equal(closed,1);
+    assert.equal(camera.model,fallback);
+    assert.equal(camera.running,true);
+    assert.equal(camera.inFlight,false);
+    assert.equal(statuses.at(-1).state,'ready');
+  } finally {fixture.restore();}
 });

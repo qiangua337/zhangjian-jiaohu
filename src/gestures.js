@@ -1,7 +1,7 @@
-import {downloadBinary} from './asset-loader.js';
+import {checkAbort,downloadBinary} from './asset-loader.js';
 import {GestureFeedback} from './gesture-feedback.js';
 import {HandSignalFilter} from './hand-filter.js';
-import {GestureContinuity,inferenceInterval} from './gesture-motion.js';
+import {GestureContinuity,InferencePacer,inferenceInterval} from './gesture-motion.js';
 
 const clamp = (value, low = 0, high = 1) => Math.min(high, Math.max(low, value));
 const handConnections = [[0,1,2,3,4],[0,5,6,7,8],[5,9,10,11,12],[9,13,14,15,16],[13,17,18,19,20],[0,17],[5,17]];
@@ -70,7 +70,9 @@ export class GestureCamera {
     Object.assign(this, { video, overlay, onStatus, onHands, onError, onProgress, drawPreview, mobile });
     this.feedback=new GestureFeedback();this.filter=new HandSignalFilter();this.continuity=new GestureContinuity();this.luminance=null;
     this.running = false; this.starting = false; this.sequence = 0; this.stream = null;
-    this.frame = null; this.model = null; this.lastVideoTime = -1; this.lastInference = -Infinity; this.inferenceCost = 0; this.lastHandAt = -Infinity;
+    this.inFlight = false;
+    this.frame = null; this.model = null; this.lastVideoTime = -1; this.inferenceCost = 0; this.lastHandAt = -Infinity;
+    this.pacer = new InferencePacer();
     this.overlayContext = overlay.getContext('2d');
     this.videoClock = typeof video.requestVideoFrameCallback === 'function' && typeof video.cancelVideoFrameCallback === 'function';
     this.confirmation = new PoseConfirmation();
@@ -78,28 +80,42 @@ export class GestureCamera {
     document.addEventListener('visibilitychange', this.handleVisibility);
   }
   async loadModel(signal,report) {
-    if(this.model)return this.model;
-    if(this.modelLoading){try{await this.modelLoading;}catch{}if(signal.aborted)throw new DOMException('已取消','AbortError');if(this.model)return this.model;}
+    if(this.model)return;
+    if(this.modelLoading){try{await this.modelLoading;}catch{}checkAbort(signal);if(this.model)return;}
     const loading=this.createModel(signal,report);this.modelLoading=loading;
     try{return await loading;}finally{if(this.modelLoading===loading)this.modelLoading=null;}
   }
   async createModel(signal,report) {
     report({phase:'runtime',ratio:null});
-    const { FilesetResolver, HandLandmarker } = await import('@mediapipe/tasks-vision');
-    if(signal.aborted)throw new DOMException('已取消','AbortError');
-    const vision = await FilesetResolver.forVisionTasks('/vision');
-    const buffer=await downloadBinary('/models/hand_landmarker.task?v=1',{signal,expectedBytes:7819105,onProgress:p=>report({phase:'download',...p})});
-    if(signal.aborted)throw new DOMException('已取消','AbortError');
-    report({phase:'initializing',ratio:null});
-    const options = {
-      baseOptions: { modelAssetBuffer:buffer, delegate: 'GPU' },
-      runningMode: 'VIDEO', numHands: 2,
-      minHandDetectionConfidence: 0.55, minHandPresenceConfidence: 0.55, minTrackingConfidence: 0.55,
+    const loadBuffer=async()=>{
+      const buffer=await downloadBinary('/models/hand_landmarker.task?v=1',{signal,expectedBytes:7819105,onProgress:p=>report({phase:'download',...p})});
+      checkAbort(signal);
+      report({phase:'initializing',ratio:null});
+      return buffer;
     };
-    try { this.model = await HandLandmarker.createFromOptions(vision, options); }
-    catch(error) {if(signal.aborted)throw error;report({phase:'adjusting',ratio:null});options.baseOptions.delegate = 'CPU';this.model = await HandLandmarker.createFromOptions(vision, options);}
-    if(this.disposed){this.model.close();this.model=null;throw new DOMException('已关闭','AbortError');}
-    return this.model;
+    let buffer=await loadBuffer();
+    if (this.mobile && !this.useMainThread) {
+      try {
+        const { supportsHandWorker, openWorkerHandModel } = await import('./worker-hand-model.js');
+        checkAbort(signal);
+        if (supportsHandWorker()) {
+          const model = await openWorkerHandModel(buffer, signal);
+          if (signal.aborted) { model.close(); checkAbort(signal); }
+          this.model = model;
+          return;
+        }
+      } catch {
+        checkAbort(signal);
+        report({phase:'adjusting',ratio:null});
+        if (!buffer.byteLength) buffer=await loadBuffer();
+      }
+      this.useMainThread = true;
+    }
+    const { createHandModel } = await import('./hand-model.js');
+    checkAbort(signal);
+    const model = await createHandModel(buffer, { signal, onFallback:()=>report({phase:'adjusting',ratio:null}) });
+    if (signal.aborted) { model.close(); checkAbort(signal); }
+    this.model = model;
   }
   async start() {
     if (this.running || this.starting) return;
@@ -124,10 +140,10 @@ export class GestureCamera {
       await this.loadModel(controller.signal,progress=>{if(sequence===this.sequence)this.onProgress(progress);});
       if (sequence !== this.sequence) return;
       this.running = true; this.starting = false;
-      this.lastVideoTime = -1;this.lastInference=-Infinity;this.lastHandAt=-Infinity;this.inferenceCost=0;this.feedback.reset(performance.now());this.filter.reset();this.continuity.reset();this.luminance=null;this.lastLightSample=0;
+      this.lastVideoTime = -1;this.lastHandAt=-Infinity;this.inferenceCost=0;this.pacer.reset();this.feedback.reset(performance.now());this.filter.reset();this.continuity.reset();this.luminance=null;this.lastLightSample=0;
       stream.getVideoTracks()[0]?.addEventListener('ended', () => { if (sequence === this.sequence && this.running) this.stop(); }, { once: true });
       this.onStatus({ state: 'ready', text: '举起一只手，让世界回应你' });
-      this.tick();
+      if (sequence === this.sequence) this.queueFrame();
     } catch (error) {
       if (sequence !== this.sequence) return;
       this.stop(false);
@@ -142,31 +158,92 @@ export class GestureCamera {
       this.onError(errors[error.name] || '识别资源暂时未能准备好。可以重试或换用系统浏览器，也可以先直接探索。');
     } finally {if(this.startController===controller)this.startController=null;}
   }
-  tick(now = performance.now()) {
-    if (!this.running) return;
+  queueFrame() {
     const sequence = this.sequence;
-    const next = time => { if (this.sequence === sequence) this.tick(time); };
+    const next = (time, metadata) => { if (this.sequence === sequence) this.tick(time, metadata); };
     this.frame = this.videoClock ? this.video.requestVideoFrameCallback(next) : requestAnimationFrame(next);
-    const interval = inferenceInterval(this.inferenceCost, this.mobile, now - this.lastHandAt < 220);
-    if (now - this.lastInference + .8 < interval || this.video.currentTime === this.lastVideoTime || this.video.readyState < 2) return;
-    this.lastInference = now; this.lastVideoTime = this.video.currentTime;
+  }
+  tick(now = performance.now(), metadata) {
+    if (!this.running) return;
+    this.queueFrame();
+    const videoTime = metadata?.mediaTime ?? this.video.currentTime;
+    if (this.inFlight || this.video.readyState < 2 || videoTime === this.lastVideoTime) return;
+    const worker = this.model?.usesWorker ? this.model : null;
+    const interval = inferenceInterval(this.inferenceCost, this.mobile, now - this.lastHandAt < 220, Boolean(worker));
+    if (!this.pacer.take(now, interval)) return;
+    this.lastVideoTime = videoTime;
+    if (worker) {
+      void this.inferInWorker(worker, now);
+      return;
+    }
     try {
       const started = performance.now();
-      const result = this.model.detectForVideo(this.video, now);
-      const inferenceMs = performance.now() - started;
-      const aspect = (this.video.videoWidth / this.video.videoHeight) || 1;
-      const detected = this.filter.update(result.landmarks.map(points => measureHand(points, aspect)).filter(Boolean), now);
-      if (detected.length) this.lastHandAt = now;
-      const { hands, stale } = this.continuity.sample(detected, now);
-      const confirmation = this.confirmation.update(hands.length === 1 ? hands[0].pose : null, now, stale);
-      const guidance = this.feedback.update({time:now,hasHands:detected.length>0,luminance:detected.length ? null : this.sampleLight(now)});
-      this.onHands({ hands, stale, confirmation, guidance, time: now });
-      if (this.drawPreview()) this.drawLandmarks(result.landmarks);
-      this.inferenceCost += (Math.min(180, performance.now() - started) - this.inferenceCost) * .28;
-      this.onMeasure?.({time:now,cost:inferenceMs,tracked:detected.length>0});
+      const { landmarks } = this.model.detectForVideo(this.video, now);
+      this.applyInference(landmarks, now, performance.now() - started, 'main', started);
     } catch (error) {
-      console.warn('Hand inference failed', error);this.stop(false);this.onStatus({state:'error',text:'手势识别已暂停'});this.onError('手势识别暂时中断，摄像头已关闭。点击“重试手势”即可重新开启。');
+      this.inferenceFailed(error);
     }
+  }
+  async inferInWorker(worker, time) {
+    const sequence = this.sequence;
+    const started = performance.now();
+    this.inFlight = true;
+    try {
+      const { landmarks, cost } = await worker.infer(this.video, time);
+      if (sequence !== this.sequence) return;
+      this.applyInference(landmarks, time, cost, 'worker', started);
+    } catch (error) {
+      if (sequence === this.sequence) {
+        if (this.model === worker) await this.recoverInference(worker, sequence);
+        else this.inferenceFailed(error);
+      }
+    } finally {
+      if (sequence === this.sequence) this.inFlight = false;
+    }
+  }
+  async recoverInference(worker, sequence) {
+    worker.close();
+    this.model = null;
+    this.useMainThread = true;
+    const controller = new AbortController();
+    this.startController = controller;
+    this.onHands({ hands: [], stopped: true, confirmation: { progress: 0, action: null }, time: performance.now() });
+    try {
+      if (sequence !== this.sequence) return;
+      this.onProgress({phase:'adjusting',ratio:null});
+      await this.loadModel(controller.signal, progress=>{if(sequence===this.sequence)this.onProgress(progress);});
+      if (sequence !== this.sequence) return;
+      this.pacer.reset();
+      this.inferenceCost = 0;
+      this.lastHandAt = -Infinity;
+      this.filter.reset();
+      this.continuity.reset();
+      this.confirmation.reset();
+      this.onStatus({state:'ready',text:'举起一只手，让世界回应你'});
+    } catch (error) {
+      if (sequence === this.sequence) this.inferenceFailed(error);
+    } finally {
+      if (this.startController === controller) this.startController = null;
+    }
+  }
+  applyInference(landmarks, time, cost, mode, started) {
+    const aspect = (this.video.videoWidth / this.video.videoHeight) || 1;
+    const detected = this.filter.update(landmarks.map(points => measureHand(points, aspect)).filter(Boolean), time);
+    if (detected.length) this.lastHandAt = time;
+    const { hands, stale } = this.continuity.sample(detected, time);
+    const confirmation = this.confirmation.update(hands.length === 1 ? hands[0].pose : null, time, stale);
+    const guidance = this.feedback.update({time,hasHands:detected.length>0,luminance:detected.length ? null : this.sampleLight(time)});
+    this.onHands({ hands, stale, confirmation, guidance, time });
+    if (this.drawPreview()) this.drawLandmarks(landmarks);
+    const deliveredAt = performance.now();
+    this.inferenceCost += (Math.min(180, deliveredAt - started) - this.inferenceCost) * .28;
+    this.onMeasure?.({time,deliveredAt,cost,tracked:detected.length>0,mode});
+  }
+  inferenceFailed(error) {
+    console.warn('Hand inference failed', error);
+    this.stop(false);
+    this.onStatus({state:'error',text:'手势识别已暂停'});
+    this.onError('手势识别暂时中断，摄像头已关闭。点击“重试手势”即可重新开启。');
   }
   sampleLight(now){
     if(now-(this.lastLightSample||0)<900)return this.luminance;
@@ -212,6 +289,8 @@ export class GestureCamera {
       else cancelAnimationFrame(this.frame);
     }
     this.frame = null;
+    if (this.model?.usesWorker) { this.model.close(); this.model = null; }
+    this.inFlight = false;
     this.stream?.getTracks().forEach(track => track.stop()); this.stream = null;
     this.video.pause(); this.video.srcObject = null;
     this.confirmation.reset();this.filter.reset();this.continuity.reset();this.feedback.reset(0);this.luminance=null;this.lightContext?.clearRect(0,0,16,12);

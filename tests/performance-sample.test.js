@@ -30,15 +30,16 @@ test('camera reports compute inference cost and consecutive visible-hand sample 
   const report = new PerformanceSample();
   report.frame({time:0,rate:60,tier:0});
   report.frame({time:16,rate:60,tier:0});
-  report.inference({time:20,cost:5,tracked:true});
-  report.inference({time:60,cost:6,tracked:true});
-  report.inference({time:100,cost:18,tracked:false});
+  report.inference({time:20,deliveredAt:30,cost:5,tracked:true,mode:'worker'});
+  report.inference({time:60,deliveredAt:88,cost:6,tracked:true,mode:'worker'});
+  report.inference({time:100,cost:18,tracked:false,mode:'main'});
   report.pause();
   report.inference({time:2000,cost:7,tracked:true});
   const [row] = report.summary();
   assert.equal(row.inferenceP95,18);
-  assert.equal(row.handIntervalP95,40);
+  assert.equal(row.handIntervalP95,58);
   assert.equal(row.trackedPercent,75);
+  assert.deepEqual([...report.inferenceModes],['worker','main']);
 });
 
 test('switch stalls are reported separately from unrelated or paused frames', () => {

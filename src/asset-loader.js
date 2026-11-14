@@ -1,4 +1,4 @@
-function checkAbort(signal) {
+export function checkAbort(signal) {
   if (signal?.aborted) throw new DOMException('已取消加载', 'AbortError');
 }
 

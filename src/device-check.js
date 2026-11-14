@@ -5,6 +5,7 @@ import './device-check.css';
 const repeatWorlds = ['heart', 'ocean', 'flower'];
 const modes = { hands: '摄像头手势', animation: '连续演绎' };
 const qualities = { auto: '自动适配', high: '精致画质', low: '流畅优先' };
+const inferenceModes = { worker: '后台线程', main: '主线程' };
 
 const markup = `
   <dialog id="check-intro" class="dialog check-dialog" aria-labelledby="check-title">
@@ -115,7 +116,7 @@ export function setupDeviceCheck({ root, experience, camera, startHands, openStu
     $('#check-table').innerHTML = '<table><thead><tr><th scope="col">指标</th><th scope="col">第 1 分钟</th><th scope="col">第 2 分钟</th><th scope="col">第 3 分钟</th></tr></thead><tbody>' + body + '</tbody></table>';
     $('#check-explain').textContent =
       'P95 表示 95% 的样本在该数值以内。换景数据包含切换时和随后半秒的帧。' +
-      (mode === 'hands' ? '手势跟手感请按实际动作填写。' : '同一组场景每分钟重复播放。');
+      (mode === 'hands' ? '手势更新间隔按识别结果送达的时间统计。跟手感请按实际动作填写。' : '同一组场景每分钟重复播放。');
     $('#check-hand-label').hidden = mode !== 'hands';
     $('#check-hand-feel').value = '';
     $('#check-motion-feel').value = '';
@@ -182,6 +183,9 @@ export function setupDeviceCheck({ root, experience, camera, startHands, openStu
       '掌间交互 ' + version + ' · ' + modes[mode] + ' · ' + seconds + ' 秒',
       width + ' × ' + height + ' · ' + qualities[quality] + ' · 目标帧率 ' + ([...sample.rates].join('/') || '—'),
     ];
+    if (mode === 'hands' && sample.inferenceModes.size) {
+      lines.push('识别方式 ' + [...sample.inferenceModes].map(key => inferenceModes[key]).join(' → '));
+    }
     if (quality === 'auto') lines.push('自动画质调整 ' + sample.qualityChanges + ' 次');
     for (const [i, row] of sample.summary().entries()) {
       if (row.fps === null) continue;

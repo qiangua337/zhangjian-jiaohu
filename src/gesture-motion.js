@@ -1,9 +1,31 @@
-export function inferenceInterval(cost, mobile, engaged) {
+export function inferenceInterval(cost, mobile, engaged, worker = false) {
   const base = engaged ? 32 : mobile ? 62 : 49;
   // Sample the next video frame when there is headroom. A slower detector
   // has to leave most of the main thread to rendering and touch input.
-  const budget = cost * (engaged ? 3.1 : 3.8);
+  const budget = cost * (worker ? (engaged ? 1.1 : 1.7) : (engaged ? 3.1 : 3.8));
   return Math.max(base, Math.min(160, budget));
+}
+
+export class InferencePacer {
+  constructor() { this.reset(); }
+
+  reset() {
+    this.last = -Infinity;
+    this.next = -Infinity;
+    this.interval = 0;
+  }
+
+  take(time, interval) {
+    const deadline = this.next + interval - this.interval;
+    const minimumGap = interval * .6;
+    if (time + .8 < Math.max(deadline, this.last + minimumGap)) return false;
+    // Keep the fractional deadline across video frames, with bounded catch-up
+    // after a late callback so we never run a burst of overdue inferences.
+    this.next = Math.max(deadline, time - interval * .5) + interval;
+    this.last = time;
+    this.interval = interval;
+    return true;
+  }
 }
 
 export class GestureContinuity {

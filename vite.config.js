@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   server: { watch: { ignored: ['**/public/artworks/**', '**/public/samples/**'] } },
+  worker: { rollupOptions: { output: { inlineDynamicImports: true } } },
   build: {
     target: 'es2020',
     rollupOptions: {

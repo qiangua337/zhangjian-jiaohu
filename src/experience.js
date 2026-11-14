@@ -368,13 +368,14 @@ export class Experience {
     if(this.demo){const phase=(this.elapsed-this.demoStart)%18,amount=phase<3?0:phase<9?THREE.MathUtils.smoothstep(phase,3,9):phase<12?1:1-THREE.MathUtils.smoothstep(phase,12,18);this.setMorph(amount);this.targetYaw=Math.sin(this.elapsed*.17)*.22;this.targetPitch=Math.sin(this.elapsed*.11)*.05;}
     const motionDelta=theaterPaused?0:delta;
     const immediate=this.reducedMotion&&!this.theater.active&&!this.demo;
-    const morphSpeed=this.hasHands?handResponse(this.morphFraction,this.controlFraction,7.5,6.2,.32):5.5;
+    const morphSpeed=this.hasHands?handResponse(this.morphFraction,this.controlFraction,7.5,8.5,.32):5.5;
     const nextMorph=immediate?this.controlFraction:THREE.MathUtils.damp(this.morphFraction,this.controlFraction,morphSpeed,motionDelta);
     this.morphFraction=Math.abs(nextMorph-this.controlFraction)<.0005?this.controlFraction:nextMorph;
     this.updateSculptingPose();
-    const turnSpeed=this.hasHands?handResponse(this.yaw,this.targetYaw,8,7,.5):7;
+    const turnSpeed=this.hasHands?handResponse(this.yaw,this.targetYaw,8,9,.5):7;
+    const tiltSpeed=this.hasHands?handResponse(this.pitch,this.targetPitch,8,9,.5):7;
     this.yaw=immediate?this.targetYaw:THREE.MathUtils.damp(this.yaw,this.targetYaw,turnSpeed,motionDelta);
-    this.pitch=immediate?this.targetPitch:THREE.MathUtils.damp(this.pitch,this.targetPitch,turnSpeed,motionDelta);
+    this.pitch=immediate?this.targetPitch:THREE.MathUtils.damp(this.pitch,this.targetPitch,tiltSpeed,motionDelta);
     this.sway=immediate?0:THREE.MathUtils.damp(this.sway,this.hasHands?0:1,5,motionDelta);
     const response=this.resonance.step(delta);
     const portraitShape=this.wasPortrait&&!this.immersive?PORTRAIT_SHAPES[this.current.id]:null,spreadFit=portraitShape?THREE.MathUtils.lerp(1,this.wasCompact?portraitShape.compact:portraitShape.normal,THREE.MathUtils.smoothstep(this.scatter,.15,.85)):1;
@@ -382,7 +383,8 @@ export class Experience {
     this.current.root.rotation.y=this.yaw+this.sway*Math.sin(this.elapsed*.11)*.08+(1-this.reveal)*.24;this.current.root.rotation.x=this.pitch;
     if(this.zoomDistance!==null){
       const offset=this.cameraOffset.subVectors(this.camera.position,this.controls.target);
-      const distance=immediate?this.zoomDistance:THREE.MathUtils.damp(offset.length(),this.zoomDistance,8,motionDelta);
+      const radius=offset.length(),zoomSpeed=handResponse(radius,this.zoomDistance,8,6,3);
+      const distance=immediate?this.zoomDistance:THREE.MathUtils.damp(radius,this.zoomDistance,zoomSpeed,motionDelta);
       const arrived=Math.abs(distance-this.zoomDistance)<.005;
       this.camera.position.copy(this.controls.target).add(offset.setLength(arrived?this.zoomDistance:distance));
       if(arrived)this.zoomDistance=null;

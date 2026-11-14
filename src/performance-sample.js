@@ -35,6 +35,7 @@ export class PerformanceSample {
     }));
     this.elapsed = 0;
     this.rates = new Set();
+    this.inferenceModes = new Set();
     this.lastTier = null;
     this.qualityChanges = 0;
     this.pause();
@@ -69,14 +70,15 @@ export class PerformanceSample {
     return this.elapsed >= CHECK_DURATION;
   }
 
-  inference({ time, cost, tracked }) {
+  inference({ time, deliveredAt = time, cost, tracked, mode }) {
+    if (mode) this.inferenceModes.add(mode);
     const window = this.window();
     window.inference.add(cost);
     if (tracked) {
       window.tracked++;
-      if (this.lastHand !== null && time - this.lastHand <= 750) window.handIntervals.add(time - this.lastHand);
+      if (this.lastHand !== null && deliveredAt - this.lastHand <= 750) window.handIntervals.add(deliveredAt - this.lastHand);
     }
-    this.lastHand = tracked ? time : null;
+    this.lastHand = tracked ? deliveredAt : null;
   }
 
   summary() {

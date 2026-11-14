@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { BLOOMED_FLOWER, FramePacer, RenderHealth, handMorph, handResponse, maxRenderTier, renderBudget, sculptingPose } from '../src/motion.js';
-import { GestureContinuity, TwoHandZoom, inferenceInterval } from '../src/gesture-motion.js';
+import { GestureContinuity, InferencePacer, TwoHandZoom, inferenceInterval } from '../src/gesture-motion.js';
 
 test('hand and slider use the same continuous flower pose, with a stable bloom before petal flight', () => {
   assert.equal(handMorph('flower', .12), 0);
@@ -38,9 +38,13 @@ test('frame pacing stays near its target on 60, 90 and 120 Hz displays', () => {
 test('automatic mobile camera use limits postprocessing, leaving explicit quality choices intact', () => {
   const full = renderBudget({mobile:true,camera:false,mode:'auto',tier:0});
   const withCamera = renderBudget({mobile:true,camera:true,mode:'auto',tier:0});
+  const lighterCamera = renderBudget({mobile:true,camera:true,mode:'auto',tier:1});
   const constrained = renderBudget({mobile:true,camera:true,mode:'auto',tier:2});
   assert.equal(withCamera.rate, full.rate);
   assert.ok(withCamera.pixels < full.pixels && withCamera.bloom < full.bloom);
+  assert.equal(lighterCamera.rate, withCamera.rate);
+  assert.ok(lighterCamera.ratio < withCamera.ratio && lighterCamera.bloom < withCamera.bloom);
+  assert.ok(lighterCamera.ratio > constrained.ratio && lighterCamera.bloom > constrained.bloom);
   assert.ok(constrained.rate < full.rate && constrained.density < full.density);
   assert.deepEqual(
     renderBudget({mobile:true,camera:true,mode:'high',tier:2}),
@@ -77,6 +81,26 @@ test('quick hand motion catches up faster without raising stationary inference l
   assert.equal(inferenceInterval(6,true,true),32);
   assert.equal(inferenceInterval(6,true,false),62);
   assert.ok(inferenceInterval(40,true,true)>100);
+});
+
+test('camera pacing keeps its target cadence on a jittery 30 fps stream', () => {
+  const pacer = new InferencePacer();
+  const duration = 10000;
+  for (const interval of [35, 50, 62, 125]) {
+    pacer.reset();
+    const inferred = [];
+    for (let i = 0; i < 300; i++) {
+      const time = i * 1000 / 30 + Math.sin(i * .8) * 2;
+      if (pacer.take(time, interval)) inferred.push(time);
+    }
+    assert.ok(Math.abs(inferred.length - duration / interval) < duration / interval * .08);
+    assert.ok(inferred.slice(1).every((time, i) => time - inferred[i] >= interval * .6 - .8));
+  }
+  assert.equal(pacer.take(15000, 125), true);
+  assert.equal(pacer.take(15033, 125), false);
+  pacer.reset();
+  assert.equal(pacer.take(15034, 125), true);
+  assert.equal(pacer.take(15067, 32), true);
 });
 
 test('a stray second hand cannot take over, and a brief loss preserves the current mode', () => {

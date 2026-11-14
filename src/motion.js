@@ -106,6 +106,9 @@ export function renderBudget({ mobile, camera, mode, tier }) {
   else budget = tier ? { rate: 60, density: .73, ratio: 1.45, pixels: 2250000, bloom: .8 }
     : { rate: 60, density: 1, ratio: 1.8, pixels: 3000000, bloom: 1 };
 
-  if (!camera || !mobile || mode !== 'auto') return budget;
-  return { ...budget, ratio: Math.min(budget.ratio, 1.18), pixels: Math.min(budget.pixels, 1080000), bloom: Math.min(budget.bloom, .54) };
+  if (camera && mobile && mode === 'auto') {
+    if (tier === 0) return { ...budget, ratio: 1.18, pixels: 1080000, bloom: .54 };
+    if (tier === 1) return { ...budget, ratio: 1.05, pixels: 940000, bloom: .46 };
+  }
+  return budget;
 }
