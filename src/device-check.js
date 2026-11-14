@@ -44,7 +44,10 @@ const markup = `
   </dialog>`;
 
 function metrics(mode) {
-  const items = [['fps', '平均帧率', ' 帧/秒'], ['frameP95', '帧间隔 P95', ' ms'], ['late', '超过 50 ms 的帧', ' 次']];
+  const items = [
+    ['fps', '平均帧率', ' 帧/秒'], ['frameP95', '帧间隔 P95', ' ms'],
+    ['late', '超过 50 ms 的帧', ' 次'], ['switchMax', '换景附近最长帧', ' ms'],
+  ];
   if (mode === 'hands') items.push(
     ['inferenceP95', '识别耗时 P95', ' ms'],
     ['handIntervalP95', '有手时更新间隔 P95', ' ms'],
@@ -55,7 +58,7 @@ function metrics(mode) {
 
 function valueText(row, key, unit) {
   const value = row.fps === null ? null : row[key];
-  return value === null ? '—' : (value === 1000 && unit === ' ms' ? '≥1000' : value) + unit;
+  return value === null ? '—' : (value === 1000 && key.endsWith('P95') ? '≥1000' : value) + unit;
 }
 
 function clockText(ms) {
@@ -80,13 +83,17 @@ export function setupDeviceCheck({ root, experience, camera, startHands, openStu
   }
 
   function playSegment() {
-    const world = repeatWorlds[Math.floor(run.sample.elapsed / 20_000) % repeatWorlds.length];
+    const segment = Math.floor(run.sample.elapsed / 20_000);
+    if (segment === run.segment && experience.demo) return;
+    run.segment = segment;
+    const world = repeatWorlds[segment % repeatWorlds.length];
     if (experience.current.id !== world) {
       experience.setWorld(world);
       experience.setDemo(true);
     } else if (!experience.demo) {
       experience.setDemo(true);
     }
+    experience.prepareWorldSoon(repeatWorlds[(segment + 1) % repeatWorlds.length]);
   }
 
   function finish(done) {
@@ -106,9 +113,9 @@ export function setupDeviceCheck({ root, experience, camera, startHands, openStu
       `<tr><th scope="row">${label}</th>${rows.map(row => '<td>' + valueText(row,key,unit) + '</td>').join('')}</tr>`
     ).join('');
     $('#check-table').innerHTML = '<table><thead><tr><th scope="col">指标</th><th scope="col">第 1 分钟</th><th scope="col">第 2 分钟</th><th scope="col">第 3 分钟</th></tr></thead><tbody>' + body + '</tbody></table>';
-    $('#check-explain').textContent = mode === 'hands'
-      ? 'P95 表示 95% 的样本在该数值以内。手势跟手感请按实际动作填写。'
-      : '同一组场景每分钟重复播放。P95 表示 95% 的帧间隔在该数值以内。';
+    $('#check-explain').textContent =
+      'P95 表示 95% 的样本在该数值以内。换景数据包含切换时和随后半秒的帧。' +
+      (mode === 'hands' ? '手势跟手感请按实际动作填写。' : '同一组场景每分钟重复播放。');
     $('#check-hand-label').hidden = mode !== 'hands';
     $('#check-hand-feel').value = '';
     $('#check-motion-feel').value = '';

@@ -3,13 +3,63 @@ import * as THREE from 'three';
 const TAU=Math.PI*2;
 
 export function heartSurface(phi,theta,depth=1.8) {
-  const dx=Math.sin(phi)*Math.cos(theta),dy=Math.cos(phi),dz=Math.sin(phi)*Math.sin(theta);
+  const sin=Math.sin(phi);
+  return heartSurfaceAlong(sin*Math.cos(theta),Math.cos(phi),sin*Math.sin(theta),depth);
+}
+
+function heartSurfaceAlong(dx,dy,dz,depth=1.8) {
+  const x2=dx*dx,y2=dy*dy,z2=dz*dz;
+  const quadratic=x2+2.25*z2+y2;
+  const fifth=(x2+.1125*z2)*y2*dy;
   let low=0,high=1.8;
   for(let k=0;k<20;k++){
-    const r=(low+high)/2,x=dx*r,y=dy*r,z=dz*r,a=x*x+2.25*z*z+y*y-1;
-    if(a*a*a-x*x*y*y*y-.1125*z*z*y*y*y>0)high=r;else low=r;
+    const r=(low+high)/2,r2=r*r,a=quadratic*r2-1;
+    if(a*a*a-fifth*r2*r2*r>0)high=r;else low=r;
   }
   const r=(low+high)/2;return [dx*r*3.25,dy*r*3.25-.35,dz*r*depth*1.6];
+}
+
+export function roundedHeartGeometry(segments=144,rings=36,depth=1.8) {
+  const height=rings*2, vertexCount=(height-1)*segments+2;
+  const positions=new Float32Array(vertexCount*3);
+  const IndexArray=vertexCount<=65536?Uint16Array:Uint32Array;
+  const indices=new IndexArray((height-1)*segments*6);
+  const meridians=Array.from({length:segments},(_,i)=>[Math.cos(i/segments*TAU),Math.sin(i/segments*TAU)]);
+  const south=vertexCount-1;
+  positions.set(heartSurfaceAlong(0,1,0,depth),0);
+  positions.set(heartSurfaceAlong(0,-1,0,depth),3*south);
+  let vertex=1;
+  for(let j=1;j<height;j++){
+    const phi=j/height*Math.PI,sin=Math.sin(phi),cos=Math.cos(phi);
+    for(const [x,z] of meridians)positions.set(heartSurfaceAlong(sin*x,cos,sin*z,depth),3*vertex++);
+  }
+
+  // The two poles and the wrapped seam share vertices. Building this
+  // topology directly avoids welding thousands of duplicates at runtime.
+  let index=0;
+  for(let i=0;i<segments;i++){
+    indices[index++]=0;
+    indices[index++]=1+(i+1)%segments;
+    indices[index++]=1+i;
+  }
+  for(let j=0;j<height-2;j++){
+    for(let i=0;i<segments;i++){
+      const next=(i+1)%segments;
+      const a=1+j*segments+i,b=1+j*segments+next,c=a+segments,d=b+segments;
+      indices[index++]=a;indices[index++]=b;indices[index++]=c;
+      indices[index++]=c;indices[index++]=b;indices[index++]=d;
+    }
+  }
+  for(let i=0;i<segments;i++){
+    indices[index++]=south-segments+i;
+    indices[index++]=south-segments+(i+1)%segments;
+    indices[index++]=south;
+  }
+  const geometry=new THREE.BufferGeometry();
+  geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));
+  geometry.setIndex(new THREE.BufferAttribute(indices,1));
+  geometry.computeVertexNormals();
+  return geometry;
 }
 
 export function crystalHeart(geometry) {

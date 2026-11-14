@@ -17,10 +17,11 @@ import {LOOKS,readLook,stageFrame} from './presentation.js';
 import {PHOTO_ARRANGEMENTS,photoPosition,photoArrangementScale} from './photo-arrangement.js';
 import {FocusResource} from './focus-resource.js';
 import {prepareFocusedTexture} from './photos.js';
-import {TheaterTimeline} from './theater.js';
+import {THEATER_CHAPTERS,TheaterTimeline} from './theater.js';
 import {BLOOMED_FLOWER,FramePacer,RenderHealth,handMorph,handResponse,maxRenderTier,renderBudget,sculptingPose} from './motion.js';
 import {TwoHandZoom} from './gesture-motion.js';
 import {createStageLights} from './scene-lighting.js';
+import {WorldPreparation} from './world-preparation.js';
 
 const PORTRAIT_SHAPES={heart:{normal:.79,compact:.78,offset:-.5},flower:{normal:.65,compact:.62,offset:-.22},ocean:{normal:.84,compact:.8,offset:.18}};
 const PORTRAIT_WIDTH={heart:.76,flower:.82,ocean:.7};
@@ -56,6 +57,13 @@ export class Experience {
     this.controls.addEventListener('start',()=>{this.onInteraction();this.setDemo(false);this.zoomDistance=null;});
     this.composer=new EffectComposer(this.renderer);this.composer.addPass(new RenderPass(this.scene,this.camera));this.bloom=new StageBloom(new THREE.Vector2(512,512),.6,.8,1.05);this.composer.addPass(this.bloom);this.composer.addPass(new OutputPass());
     this.worldStore=createWorldStore();this.current=this.getWorld(initialWorld);this.current.root.visible=true;this.setScenePalette(this.current);
+    this.preparation=new WorldPreparation({
+      schedule:window.requestIdleCallback?.bind(window),
+      cancel:window.cancelIdleCallback?.bind(window),
+      canWork:()=>this.prepared&&!this.disposed&&!this.contextLost&&!document.hidden&&
+        !this.cameraBusy&&!this.activePointers.size&&performance.now()>=this.warmAfter,
+      build:id=>this.planWorldPreparation(id)
+    });
     this.stars=makeStarfield();this.scene.add(this.stars.object);
     this.yaw=0;this.pitch=0;this.targetYaw=0;this.targetPitch=0;this.elapsed=0;this.frozen=false;this.sway=1;
     this.photoLayer=new THREE.Group();this.scene.add(this.photoLayer);this.photos=[];this.photoFaces=[];
@@ -69,17 +77,17 @@ export class Experience {
     this.reveal=1;
     this.renderer.domElement.addEventListener('dblclick',()=>this.toggleSpread());
     this.activePointers=new Set();
-    this.renderer.domElement.addEventListener('pointerdown',event=>{this.activePointers.add(event.pointerId);this.tapStart=this.activePointers.size===1?{id:event.pointerId,x:event.clientX,y:event.clientY,time:performance.now()}:null;});
+    this.renderer.domElement.addEventListener('pointerdown',event=>{this.deferPreparation();this.activePointers.add(event.pointerId);this.tapStart=this.activePointers.size===1?{id:event.pointerId,x:event.clientX,y:event.clientY,time:performance.now()}:null;});
     this.renderer.domElement.addEventListener('pointerup',event=>{const start=this.tapStart;this.activePointers.delete(event.pointerId);if(start?.id===event.pointerId&&Math.hypot(event.clientX-start.x,event.clientY-start.y)<8&&performance.now()-start.time<500){const x=event.clientX/innerWidth,y=event.clientY/innerHeight;if(!this.pickPhoto(x,y,false))this.pulse(x,y);}this.tapStart=null;});
     this.renderer.domElement.addEventListener('pointermove',event=>{const start=this.tapStart;if(start?.id===event.pointerId&&Math.hypot(event.clientX-start.x,event.clientY-start.y)>=8)this.tapStart=null;});
     const cancelTap=event=>{this.activePointers.delete(event.pointerId);if(this.tapStart?.id===event.pointerId)this.tapStart=null;};
     this.renderer.domElement.addEventListener('pointercancel',cancelTap);
     this.renderer.domElement.addEventListener('lostpointercapture',cancelTap);
     this.renderer.domElement.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();this.onInteraction();this.pulse();}});
-    this.removeContextRecovery=bindContextRecovery(this.renderer.domElement,{pause:()=>{this.contextLost=true;cancelAnimationFrame(this.frame);this.setDemo(false);this.onContext('lost');},rebuild:()=>this.restoreGraphics(),resume:()=>{this.contextLost=false;this.resumeRendering();},onState:(state)=>{if(state!=='lost')this.onContext(state);}});
+    this.removeContextRecovery=bindContextRecovery(this.renderer.domElement,{pause:()=>{this.contextLost=true;this.preparation.reset();cancelAnimationFrame(this.frame);this.setDemo(false);this.onContext('lost');},rebuild:()=>this.restoreGraphics(),resume:()=>{this.contextLost=false;this.resumeRendering();},onState:(state)=>{if(state!=='lost')this.onContext(state);}});
     this.ready=this.prepareCurrentWorld().then(()=>{if(this.disposed)return;this.prepared=true;this.resumeRendering();this.onReducedMotion(this.reducedMotion);this.onReady();});
   }
-  resumeRendering(){if(this.disposed||this.contextLost||!this.prepared)return;cancelAnimationFrame(this.frame);this.pacer.reset();this.renderHealth.reset();this.frame=requestAnimationFrame(time=>this.render(time));}
+  resumeRendering(){if(this.disposed||this.contextLost||!this.prepared)return;cancelAnimationFrame(this.frame);this.pacer.reset();this.renderHealth.reset();this.prepareNextWorld();this.frame=requestAnimationFrame(time=>this.render(time));}
   getWorld(id){const world=this.worldStore.get(id);if(!world.root.parent){world.root.visible=false;this.scene.add(world.root);}return world;}
   setScenePalette(world){
     this.scene.background.set(world.bg);this.atmosphere.setWorld(world);this.lightfield.setWorld(world);
@@ -88,10 +96,43 @@ export class Experience {
   }
   setLook(value){this.look=readLook(value);const look=LOOKS[this.look];this.renderer.toneMappingExposure=look.exposure;this.bloom.strength=(this.baseBloom||.58)*look.bloom;this.atmosphere.setLook(look.atmosphere);}
   setPhotoArrangement(value){this.photoArrangement=Object.prototype.hasOwnProperty.call(PHOTO_ARRANGEMENTS,value)?value:'world';}
+  compileForStage(content, wait) {
+    const target=this.renderer.getRenderTarget();
+    this.renderer.setRenderTarget(this.composer.readBuffer);
+    try {
+      return wait&&this.renderer.compileAsync
+        ?this.renderer.compileAsync(content,this.camera,this.scene)
+        :this.renderer.compile(content,this.camera,this.scene);
+    } finally {
+      this.renderer.setRenderTarget(target);
+    }
+  }
+  planWorldPreparation(id) {
+    const world=this.getWorld(id), maps=new Set();
+    world.root.traverse(object=>{
+      if(object.material?.map)maps.add(object.material.map);
+    });
+    const steps=[];
+    if(this.renderer.extensions.has('KHR_parallel_shader_compile')){
+      steps.push(()=>this.compileForStage(world.root,false));
+    }
+    for(const map of maps)steps.push(()=>this.renderer.initTexture(map));
+    return steps;
+  }
   async prepareCurrentWorld(){
     this.current.root.scale.setScalar(this.current.scale);updateWorld(this.current,0,this.scatter,this.open,this.quality,1);
-    if(this.renderer.compileAsync)await this.renderer.compileAsync(this.scene,this.camera);
+    await this.compileForStage(this.scene,true);
+    this.preparation.markPrepared(this.current.id);
     if(!this.disposed)this.composer.render();
+  }
+  deferPreparation() { this.warmAfter=performance.now()+420; }
+  prepareWorldSoon(id) { this.preparation.select(id===this.current.id?null:id); }
+  prepareNextWorld() {
+    const worlds=this.theater.active?THEATER_CHAPTERS:WORLD_INFO;
+    const index=worlds.findIndex(item=>(item.world??item.id)===this.current.id);
+    const next=worlds[(index+1)%worlds.length];
+    this.deferPreparation();
+    this.prepareWorldSoon(next.world||next.id);
   }
   setStudio(active) {
     this.studio = active;
@@ -141,26 +182,30 @@ export class Experience {
   }
   setWorld(id,{theater=false}={}) {
     if(!theater)this.stopTheater();
-    if(id===this.current.id||!WORLD_INFO.some(world=>world.id===id))return;if(this.focused||this.grabbed)this.clearFocus();const next=this.getWorld(id);
+    if(id===this.current.id||!WORLD_INFO.some(world=>world.id===id))return;
+    if(this.focused||this.grabbed)this.clearFocus();
+    const next=this.getWorld(id);
+    this.preparation.markPrepared(id);
     this.resonance.reset();this.responseField.root.visible=false;
     this.current.root.visible=false;this.current=next;this.current.root.visible=true;this.reveal=0;this.setScenePalette(next);
     this.setMorph(next.id==='flower'?BLOOMED_FLOWER:0,{immediate:true});
     this.yaw=this.pitch=this.targetYaw=this.targetPitch=0;this.clearHandControl(true);
     this.onPhotoFocus(null);this.onWorld(next);this.renderHealth.skipTransition();
-    this.wasSized=false;this.resize();
+    this.wasSized=false;this.resize();this.prepareNextWorld();
   }
   nextWorld(){const index=WORLD_INFO.findIndex(world=>world.id===this.current.id);this.setWorld(WORLD_INFO[(index+1)%WORLD_INFO.length].id);}
   setDemo(active,{once=false,completed=false}={}){this.stopTheater();const changed=Boolean(this.demo)!==active;this.demo=active;this.demoOnce=active&&once;if(active){this.demoStart=this.elapsed;this.frozen=false;this.clearFocus();}if(changed)this.onDemo(active,{once,completed});}
   applyTheaterFrame(frame,snap=false){if(this.current.id!==frame.world)this.setWorld(frame.world,{theater:true});this.setMorph(frame.morph,{immediate:snap});this.targetYaw=frame.yaw;this.targetPitch=frame.pitch;if(snap){this.reveal=1;this.yaw=frame.yaw;this.pitch=frame.pitch;}}
-  startTheater(index=0){this.setDemo(false);this.clearFocus();this.frozen=false;this.photoLayer.visible=false;const frame=this.theater.start(index);this.onTheater(frame);this.applyTheaterFrame(frame,true);this.wasSized=false;this.resize();}
+  startTheater(index=0){this.setDemo(false);this.clearFocus();this.frozen=false;this.photoLayer.visible=false;const frame=this.theater.start(index);this.onTheater(frame);this.applyTheaterFrame(frame,true);this.wasSized=false;this.resize();this.prepareNextWorld();}
   pauseTheater(value){if(!this.theater.active)return;this.onTheater(this.theater.pause(value));}
   seekTheater(index){if(!this.theater.active)return;const frame=this.theater.seek(index);this.applyTheaterFrame(frame,true);this.onTheater(frame);}
-  stopTheater({completed=false}={}){if(!this.theater.active)return;const frame=this.theater.stop();this.photoLayer.visible=true;this.onTheater({...frame,completed});this.wasSized=false;this.resize();}
+  stopTheater({completed=false}={}){if(!this.theater.active)return;const frame=this.theater.stop();this.photoLayer.visible=true;this.onTheater({...frame,completed});this.wasSized=false;this.resize();this.prepareNextWorld();}
   setReducedMotion(reduce){this.reducedMotion=reduce;this.controls.enableDamping=!reduce;if(reduce)this.setDemo(false);this.onReducedMotion(reduce);}
   async restoreGraphics(){
     this.environmentTarget.dispose();this.environmentTarget=studioEnvironment(this.renderer);this.environment=this.environmentTarget.texture;this.scene.environment=this.environment;
-    this.composer.reset();this.resize();
-    if(this.renderer.compileAsync)await this.renderer.compileAsync(this.scene,this.camera);
+    this.composer.reset();this.bufferRatio=null;this.resize();
+    await this.compileForStage(this.scene,true);
+    this.preparation.markPrepared(this.current.id);
     if(this.disposed)throw new Error('画面已关闭');
     this.composer.render();
   }
@@ -186,6 +231,10 @@ export class Experience {
   setCameraActive(active){
     if(this.cameraActive===active)return;
     this.cameraActive=active;this.renderHealth.reset();this.resize();
+  }
+  setCameraBusy(busy) {
+    if(this.cameraBusy&&!busy)this.deferPreparation();
+    this.cameraBusy=busy;
   }
   adaptRendering(elapsed){
     if(this.qualityMode!=='auto')return;
@@ -332,7 +381,9 @@ export class Experience {
     if(this.zoomDistance!==null){
       const offset=this.cameraOffset.subVectors(this.camera.position,this.controls.target);
       const distance=immediate?this.zoomDistance:THREE.MathUtils.damp(offset.length(),this.zoomDistance,8,motionDelta);
-      this.camera.position.copy(this.controls.target).add(offset.setLength(distance));
+      const arrived=Math.abs(distance-this.zoomDistance)<.005;
+      this.camera.position.copy(this.controls.target).add(offset.setLength(arrived?this.zoomDistance:distance));
+      if(arrived)this.zoomDistance=null;
     }
     this.controls.dampingFactor=1-Math.exp(-delta*(this.mobile?8.2:5.6));
     this.controls.update();
@@ -356,7 +407,8 @@ export class Experience {
     this.composer.render();
     this.onFrame?.({time,rate,tier,world:this.current.id});
     this.adaptRendering(elapsed);
+    this.preparation.queue();
   }
   capture(format='png'){if(this.contextLost)throw new Error('画面正在恢复，请稍后保存');this.composer.render();return this.renderer.domElement.toDataURL(format==='webp'?'image/webp':'image/png',.9);}
-  dispose(){this.disposed=true;this.photoQuality.clear();this.removeContextRecovery?.();this.motionQuery.removeEventListener?.('change',this.motionHandler);cancelAnimationFrame(this.frame);this.resizeObserver.disconnect();this.controls.dispose();this.scene.traverse(o=>{o.geometry?.dispose();if(o.material){const materials=Array.isArray(o.material)?o.material:[o.material];materials.forEach(material=>material.dispose());}});this.atmosphere.dispose();this.environmentTarget.dispose();this.bloom.dispose();this.composer.dispose();this.renderer.dispose();}
+  dispose(){this.disposed=true;this.preparation.clear();this.photoQuality.clear();this.removeContextRecovery?.();this.motionQuery.removeEventListener?.('change',this.motionHandler);cancelAnimationFrame(this.frame);this.resizeObserver.disconnect();this.controls.dispose();this.scene.traverse(o=>{o.geometry?.dispose();if(o.material){const materials=Array.isArray(o.material)?o.material:[o.material];materials.forEach(material=>material.dispose());}});this.atmosphere.dispose();this.environmentTarget.dispose();this.bloom.dispose();this.composer.dispose();this.renderer.dispose();}
 }

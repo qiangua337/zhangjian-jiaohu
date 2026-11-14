@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {heartSurface,pineBranches} from '../src/sculptures.js';
+import {heartSurface,pineBranches,roundedHeartGeometry} from '../src/sculptures.js';
 import {createSwarm,orbitalPosition} from '../src/swarm.js';
 
 function random(seed=17){return ()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296;};}
@@ -12,6 +12,28 @@ test('the heart is a closed, symmetric volume on its implicit surface',()=>{
     assert.ok(p.every(Number.isFinite));assert.ok(Math.abs(p[0]-mirror[0])<1e-5&&Math.abs(p[1]-mirror[1])<1e-5&&Math.abs(p[2]+mirror[2])<1e-5);
     const x=p[0]/3.25,y=(p[1]+.35)/3.25,z=p[2]/2.88,a=x*x+2.25*z*z+y*y-1;
     assert.ok(Math.abs(a*a*a-x*x*y*y*y-.1125*z*z*y*y*y)<.0001);
+  }
+});
+
+test('the heart meshes close the seam and both caps without back-facing triangles',()=>{
+  for (const geometry of [roundedHeartGeometry(),roundedHeartGeometry(20,7)]) {
+    const vertices=geometry.getAttribute('position'), indices=geometry.index.array;
+    const a=new THREE.Vector3(), b=new THREE.Vector3(), c=new THREE.Vector3();
+    const normal=new THREE.Vector3(), outward=new THREE.Vector3(), edges=new Map();
+    for (let i=0;i<indices.length;i+=3) {
+      const ia=indices[i],ib=indices[i+1],ic=indices[i+2];
+      a.fromBufferAttribute(vertices,ia);b.fromBufferAttribute(vertices,ib);c.fromBufferAttribute(vertices,ic);
+      outward.copy(a).add(b).add(c).divideScalar(3);
+      outward.y+=.35;
+      normal.subVectors(b,a).cross(c.sub(a));
+      assert.ok(normal.dot(outward)>0);
+      for (const [u,v] of [[ia,ib],[ib,ic],[ic,ia]]) {
+        const key=Math.min(u,v)*vertices.count+Math.max(u,v);
+        edges.set(key,(edges.get(key)||0)+1);
+      }
+    }
+    assert.ok([...edges.values()].every(count=>count===2));
+    geometry.dispose();
   }
 });
 

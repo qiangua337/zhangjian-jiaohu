@@ -189,6 +189,7 @@ function setManualMode(){
 }
 function updateCameraStatus({state,text}){
   const active=state==='ready',preview=['ready','loading'].includes(state),pending=['permission','loading'].includes(state);
+  experience?.setCameraBusy(active||pending);
   experience?.setCameraActive(active);
   if(state==='permission'){lastProgressLabel='';lastProgressPhase='';}
   $('#camera-live').textContent=text;app.dataset.camera=active?'on':pending?'loading':'off';app.dataset.cameraState=state;$('#camera-status').textContent=text;
@@ -255,7 +256,7 @@ function handleHands({hands,stale=false,stopped=false,confirmation,guidance,time
 function updateFreezeButton(frozen){$('#freeze-button').innerHTML=icon(frozen?'play':'pause')+'<span>'+(frozen?'继续':'定格')+'</span>';$('#freeze-button').setAttribute('aria-label',frozen?'继续场景动画':'定格场景');studioUI?.renderFreeze(frozen);}
 function toggleFreeze(){experience.setDemo(false);updateFreezeButton(experience.toggleFreeze());}
 function resetScene(){setManualMode();experience.resetView();updateFreezeButton(false);$('#spread-button span').textContent='展开';}
-function applyMorph(value,respond=false){setManualMode();experience.setMorph(value,{respond});}
+function applyMorph(value,respond=false){setManualMode();experience.deferPreparation();experience.setMorph(value,{respond});}
 const motionNotes={saturn:['一颗星球，等待你的引力','星环，正在缓缓解开','让群星沿轨道漫游'],heart:['所有心动，聚在一起','松开一点，让心动流转','每一颗，都是独立的小心动'],tree:['把回忆，珍藏成一棵树','星光正在离开枝头','让星饰与记忆缓缓环绕'],flower:['花苞，等你轻轻松手','花瓣正在层层舒展','让花瓣随你的手飞舞'],ocean:['静静呼吸的一片微光','水母正在向远处游散','一群微光，自在漂游']};
 function renderMotion({fraction,controlFraction=fraction,expanded,world}){
   const value=Math.round(fraction*100),control=Math.round(controlFraction*100);
@@ -385,7 +386,7 @@ $('#copy-feedback').addEventListener('click',async()=>{try{await navigator.clipb
 $('#clear-photos').addEventListener('click',()=>{importSequence++;sampleController?.abort();[...experience.photos].forEach(photo=>experience.removePhoto(photo.id));renderPhotoList();$('#photo-upload-status').textContent='照片已清空。';});
 const drop=$('#upload-zone');['dragenter','dragover'].forEach(name=>drop.addEventListener(name,event=>{event.preventDefault();drop.classList.add('dragging');}));['dragleave','drop'].forEach(name=>drop.addEventListener(name,event=>{event.preventDefault();drop.classList.remove('dragging');if(name==='drop')importPhotos(event.dataTransfer.files);}));
 $('#hide-camera').addEventListener('click',()=>{cameraPreviewHidden=true;$('#camera-panel').hidden=true;$('#show-camera').hidden=false;});$('#show-camera').addEventListener('click',()=>{cameraPreviewHidden=false;$('#camera-panel').hidden=false;$('#show-camera').hidden=true;});
-$('#spread-button').addEventListener('click',()=>{setManualMode();$('#spread-button span').textContent=experience.toggleSpread()?'聚合':'展开';});
+$('#spread-button').addEventListener('click',()=>{setManualMode();experience.deferPreparation();$('#spread-button span').textContent=experience.toggleSpread()?'聚合':'展开';});
 $('#morph-range').addEventListener('input',event=>{applyMorph(Number(event.target.value)/100);event.target.style.setProperty('--fill',event.target.value+'%');});
 $('.stage-presets').addEventListener('click',event=>{const button=event.target.closest('[data-stage]');if(button)applyMorph(Number(button.dataset.stage),true);});
 $('#focus-button').addEventListener('click',()=>{const immersive=app.dataset.immersive!=='yes';app.dataset.immersive=immersive?'yes':'no';experience.immersive=immersive;experience.resize();const label=immersive?'返回操作':'沉浸观看';$('#focus-button').setAttribute('aria-pressed',String(immersive));$('#focus-button').setAttribute('aria-label',label);$('#focus-button').title=label;$('#focus-button span').textContent=label;});

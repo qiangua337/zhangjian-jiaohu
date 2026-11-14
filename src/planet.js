@@ -4,16 +4,29 @@ import { SATURN_KEY } from './scene-lighting.js';
 export function cloudBands() {
   const width = 768, height = 384;
   const pixels = new Uint8Array(width * height * 4);
+  const turn = Math.PI * 2;
+  const longitudes = Array.from({ length: width }, (_, x) => {
+    const angle = x / width * turn;
+    return {
+      storm: (.5 + .5 * Math.cos(angle - 2.15)) ** 18,
+      lowSin: Math.sin(angle * 4), lowCos: Math.cos(angle * 4),
+      highSin: Math.sin(angle * 11), highCos: Math.cos(angle * 11),
+      cloud: angle * 22,
+    };
+  });
   for (let y = 0; y < height; y++) {
     const lat = y / (height - 1), pole = Math.abs(lat - .5) * 2;
     const stormLatitude = Math.exp(-((lat - .64) ** 2) / .0011);
+    const lowSin = Math.sin(lat * 38), lowCos = Math.cos(lat * 38);
+    const highSin = Math.sin(lat * 29), highCos = Math.cos(lat * 29);
     for (let x = 0; x < width; x++) {
-      const angle = x / width * Math.PI * 2;
-      const storm = stormLatitude * (.5 + .5 * Math.cos(angle - 2.15)) ** 18;
-      const curl = Math.sin(angle * 4 + lat * 38) * .006 + Math.sin(angle * 11 - lat * 29) * .0025;
-      const band = (lat + curl + storm * .017) * 2 * Math.PI;
+      const longitude = longitudes[x];
+      const storm = stormLatitude * longitude.storm;
+      const curl = (longitude.lowSin * lowCos + longitude.lowCos * lowSin) * .006 +
+        (longitude.highSin * highCos - longitude.highCos * highSin) * .0025;
+      const band = (lat + curl + storm * .017) * turn;
       const waves = .17 * Math.sin(band * 8.4) + .11 * Math.sin(band * 17.7 + .7) + .04 * Math.sin(band * 45.2);
-      const cloud = waves + .032 * Math.sin(angle * 22 + band * 26);
+      const cloud = waves + .032 * Math.sin(longitude.cloud + band * 26);
       const contrast = .53 + cloud - pole * .11;
       const i = (y * width + x) * 4;
       pixels[i] = 145 + contrast * 77 + storm * 9;

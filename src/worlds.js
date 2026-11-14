@@ -1,7 +1,6 @@
 import * as THREE from 'three';
-import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createSwarm } from './swarm.js';
-import { heartSurface, crystalHeart, pineBranches, pineRadius, petalTexture, orbitLines } from './sculptures.js';
+import { heartSurface, roundedHeartGeometry, crystalHeart, pineBranches, pineRadius, petalTexture, orbitLines } from './sculptures.js';
 import { jellyModel as detailedJelly } from './jelly.js';
 import {heartCloud,galaxyArm,oceanCurrent} from './scene-layout.js';
 import {LazyWorldStore} from './world-store.js';
@@ -49,7 +48,8 @@ export class ParticleField {
       const p=shape(rng,i,count);positions.set(p,i*3);
       const theta=rng()*TAU,v=rng()*2-1,r=3+Math.pow(rng(),.5)*5,ring=Math.sqrt(1-v*v);
       chaos.set([Math.cos(theta)*ring*r,v*r*.55,Math.sin(theta)*ring*r*.45],i*3);
-      const c=hues[Math.floor(rng()*hues.length)].clone().multiplyScalar(brightness*(.55+rng()*.9));colors.set([c.r,c.g,c.b],i*3);
+      const c=hues[Math.floor(rng()*hues.length)],strength=brightness*(.55+rng()*.9);
+      const point=i*3;colors[point]=c.r*strength;colors[point+1]=c.g*strength;colors[point+2]=c.b*strength;
       sizes[i]=.45+rng()*1.35;phases[i]=rng()*100;
     }
     this.geometry=new THREE.BufferGeometry();this.geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));this.geometry.setAttribute('aChaos',new THREE.BufferAttribute(chaos,3));this.geometry.setAttribute('aColor',new THREE.BufferAttribute(colors,3));this.geometry.setAttribute('aSize',new THREE.BufferAttribute(sizes,1));this.geometry.setAttribute('aPhase',new THREE.BufferAttribute(phases,1));
@@ -100,17 +100,6 @@ function createSaturn(info, texture) {
   return world;
 }
 
-function roundedHeartGeometry(segments=144,rings=36,depth=1.8){
-  const positions=[],indices=[],height=rings*2;
-  // Solve the implicit heart surface along rays. This gives rounded lobes
-  // on every side, rather than adding depth to a flat heart outline.
-  for(let j=0;j<=height;j++)for(let i=0;i<=segments;i++){
-    positions.push(...heartSurface(j/height*Math.PI,i/segments*TAU,depth));
-  }
-  const stride=segments+1;
-  for(let j=0;j<height;j++)for(let i=0;i<segments;i++){const a=j*stride+i,b=a+stride;indices.push(a,a+1,b,b,a+1,b+1);}
-  let geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geometry.setIndex(indices);const welded=mergeVertices(geometry);geometry.dispose();geometry=welded;geometry.computeVertexNormals();return geometry;
-}
 function createHeart(info,texture) {
   const world=baseWorld(info,texture);
   const geometry=roundedHeartGeometry();
