@@ -169,6 +169,7 @@ export class GestureCamera {
     const videoTime = metadata?.mediaTime ?? this.video.currentTime;
     if (this.inFlight || this.video.readyState < 2 || videoTime === this.lastVideoTime) return;
     const worker = this.model?.usesWorker ? this.model : null;
+    if (worker && !(this.video.videoWidth && this.video.videoHeight)) return;
     const interval = inferenceInterval(this.inferenceCost, this.mobile, now - this.lastHandAt < 220, Boolean(worker));
     if (!this.pacer.take(now, interval)) return;
     this.lastVideoTime = videoTime;

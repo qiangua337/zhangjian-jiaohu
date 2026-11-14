@@ -2,12 +2,15 @@ import { checkAbort } from './asset-loader.js';
 
 export function supportsHandWorker() {
   return typeof Worker === 'function' && typeof OffscreenCanvas === 'function' &&
-    typeof createImageBitmap === 'function';
+    typeof OffscreenCanvas.prototype.transferToImageBitmap === 'function';
 }
 
 export async function openWorkerHandModel(buffer, signal) {
   checkAbort(signal);
-  const model = new WorkerHandModel(new Worker(new URL('./hand-inference-worker.js', import.meta.url)));
+  const context = new OffscreenCanvas(1, 1).getContext('2d', { alpha: false });
+  if (!context) throw new Error('无法准备手势识别画布');
+  const worker = new Worker(new URL('./hand-inference-worker.js', import.meta.url));
+  const model = new WorkerHandModel(worker, context);
   const abort = () => model.close();
   signal.addEventListener('abort', abort, { once: true });
   try {
@@ -23,8 +26,9 @@ export async function openWorkerHandModel(buffer, signal) {
 }
 
 class WorkerHandModel {
-  constructor(worker) {
+  constructor(worker, context) {
     this.worker = worker;
+    this.context = context;
     this.usesWorker = true;
     worker.onmessage = ({ data }) => this.settle(data.error && new Error(data.error), data);
     worker.onerror = event => {
@@ -58,15 +62,17 @@ class WorkerHandModel {
   }
 
   async infer(video, time) {
-    const longestSide = Math.max(video.videoWidth, video.videoHeight);
-    const scale = longestSide > 352 ? 352 / longestSide : 1;
-    const bitmap = scale < 1
-      ? await createImageBitmap(video, {
-        resizeWidth: Math.round(video.videoWidth * scale),
-        resizeHeight: Math.round(video.videoHeight * scale),
-        resizeQuality: 'low',
-      })
-      : await createImageBitmap(video);
+    if (this.closed) throw new DOMException('手势识别已停止', 'AbortError');
+    const scale = Math.min(1, 352 / Math.max(video.videoWidth, video.videoHeight));
+    const width = Math.max(1, Math.round(video.videoWidth * scale));
+    const height = Math.max(1, Math.round(video.videoHeight * scale));
+    const { canvas } = this.context;
+    if (canvas.width !== width) canvas.width = width;
+    if (canvas.height !== height) canvas.height = height;
+    // A resized video bitmap can still trigger a slow pixel read on upload.
+    // Drawing into a small reusable surface avoids keeping the video backing.
+    this.context.drawImage(video, 0, 0, width, height);
+    const bitmap = canvas.transferToImageBitmap();
     try {
       return await this.request({ type: 'detect', bitmap, time }, [bitmap], 2000);
     } finally {

@@ -92,7 +92,7 @@ test('video callbacks deduplicate by frame timestamp even if the playback clock 
 
 test('a slow worker skips intervening video frames and its result cannot arrive after stop',async()=>{
   let callback, finish, requests=0, closed=0;
-  const fixture=cameraFixture(async()=>{},{readyState:4,
+  const fixture=cameraFixture(async()=>{},{readyState:4,videoWidth:480,videoHeight:360,
     requestVideoFrameCallback(next){callback=next;return 1;},cancelVideoFrameCallback(){}
   });
   try {
