@@ -41,6 +41,8 @@ export class Experience {
     this.scene=new THREE.Scene();this.scene.background=new THREE.Color('#060a13');
     this.camera=new THREE.PerspectiveCamera(42,1,.1,150);
     this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
+    // Querying shader diagnostics on first draw can stall the rendering thread.
+    if(import.meta.env.PROD)this.renderer.debug.checkShaderErrors=false;
     this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.12;
     this.renderer.domElement.setAttribute('aria-label','可拖动、缩放的三维互动场景');this.renderer.domElement.setAttribute('role','img');this.renderer.domElement.tabIndex=0;container.appendChild(this.renderer.domElement);
     this.renderer.domElement.setAttribute('aria-keyshortcuts','Enter');this.renderer.domElement.setAttribute('aria-description','轻触唤起光波，拖动旋转，滚轮或双指缩放。键盘按回车键也能唤起光波。');

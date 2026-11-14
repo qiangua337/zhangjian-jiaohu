@@ -28,11 +28,12 @@ test('scene preparation yields to camera and short idle windows between build, c
   const {queue,steps,tick,block,unblock}=fixture();
   queue.select('heart');
   tick(3);assert.deepEqual(steps,[]);
-  tick(18);assert.deepEqual(steps,['heart:build']);
+  tick(4);assert.deepEqual(steps,['heart:build']);
   block();
   tick(18);assert.equal(steps.length,1);
   unblock();
-  tick(18);tick(18);tick(18);
+  tick(1);assert.deepEqual(steps,['heart:build']);
+  tick(3);tick(3);tick(3);
   assert.deepEqual(steps,['heart:build','heart:compile','heart:texture']);
   queue.select('heart');tick(18);assert.equal(steps.length,3);
 });

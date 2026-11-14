@@ -26,7 +26,8 @@ export class WorldPreparation {
       if (this.job !== job) return;
       this.pending = null;
       if (!this.canWork()) return;
-      const minimum = job.steps ? 5 : 14;
+      // A steady 60 Hz animation can leave only a few milliseconds of idle time.
+      const minimum = job.steps ? 2 : 3.5;
       if (deadline.timeRemaining() < minimum) return;
       try {
         if (!job.steps) job.steps = this.build(job.id);
